@@ -2,7 +2,7 @@
 using System.IO.Compression;
 using System.Text;
 
-namespace RoslynObfuscator.Tests.TestCases
+namespace ObfuscatorUnitTests.Tests.TestCases
 {
     class UsingReplaceCase
     {

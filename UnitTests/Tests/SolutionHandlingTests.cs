@@ -9,10 +9,11 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Options;
 using Microsoft.CodeAnalysis.Rename;
 using NUnit.Framework;
+using ObfuscatorUnitTests.Tests.TestCases;
+using RoslynObfuscator;
 using RoslynObfuscator.Obfuscation;
-using RoslynObfuscator.Tests.TestCases;
 
-namespace RoslynObfuscator.Tests
+namespace ObfuscatorUnitTests.Tests
 {
     [TestFixture]
     class SolutionHandlingTests

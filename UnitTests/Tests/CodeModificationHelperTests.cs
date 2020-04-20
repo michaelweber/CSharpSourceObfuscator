@@ -7,10 +7,10 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NUnit.Framework;
+using ObfuscatorUnitTests.Tests.TestCases;
 using RoslynObfuscator.Obfuscation;
-using RoslynObfuscator.Tests.TestCases;
 
-namespace RoslynObfuscator.Tests
+namespace ObfuscatorUnitTests.Tests
 {
     [TestFixture]
     class CodeModificationHelperTests

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -11,12 +12,15 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.MSBuild;
 using RoslynObfuscator.Obfuscation.InjectedClasses;
 
-namespace RoslynObfuscator.Tests.TestCases
+namespace ObfuscatorUnitTests.Tests.TestCases
 {
     public static class TestHelpers
     {
         public static readonly string TestPath = Path.DirectorySeparatorChar + "Tests" + Path.DirectorySeparatorChar + 
                                                  "TestCases" + Path.DirectorySeparatorChar;
+
+        public static readonly string ImagePath = Path.DirectorySeparatorChar + "img" + Path.DirectorySeparatorChar;
+                                                 
 
         private static MSBuildWorkspace _workspace;
 
@@ -76,7 +80,9 @@ namespace RoslynObfuscator.Tests.TestCases
                 typeof(System.IO.Compression.CompressionMode).Assembly,
                 typeof(System.Xml.DtdProcessing).Assembly,
                 typeof(System.Xml.Linq.ReaderOptions).Assembly,
-                typeof(System.Reflection.Assembly).Assembly
+                typeof(System.Reflection.Assembly).Assembly,
+                typeof(System.Drawing.Bitmap).Assembly,
+                typeof(System.Text.Encoding).Assembly
             };
 
             return assemblies;
@@ -119,6 +125,41 @@ namespace RoslynObfuscator.Tests.TestCases
             compilation = compilation.AddSyntaxTrees(syntaxTree1, syntaxTree2);
             return compilation;
         }
+
+        public static Compilation GetLongBadStringTestCompilation()
+        {
+            string path = AssemblyDirectory + TestPath + "LongBadStringTestCase.cs";
+            string programText = File.ReadAllText(path);
+            SyntaxTree tree = CSharpSyntaxTree.ParseText(programText);
+
+            // var compilation = CSharpCompilation.CreateScriptCompilation("longBadString");
+            // compilation = GetAssemblyArray().Aggregate(compilation, (current, assembly) => current.AddReferences(MetadataReference.CreateFromFile(assembly.Location)));
+            // compilation = compilation.AddSyntaxTrees(tree);
+            // return compilation;
+
+            Assembly[] assemblies = GetAssemblyArray();
+
+            var compilation = CSharpCompilation.Create("obfuscated");
+
+            compilation = assemblies.Aggregate(compilation, (current, assembly) => current.AddReferences(MetadataReference.CreateFromFile(assembly.Location)));
+
+            compilation = compilation.AddSyntaxTrees(tree);
+
+            return compilation;
+        }
+
+        public static Image GetStegoImage()
+        {
+            string path = AssemblyDirectory + ImagePath + "vtenterprise.bmp";
+            return Image.FromFile(path);
+        }
+
+        public static Image GetStegoPNG()
+        {
+            string path = AssemblyDirectory + ImagePath + "chrome.png";
+            return Image.FromFile(path);
+        }
+
 
         public static Compilation GetSharpDumpCompilation()
         {

@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace RoslynObfuscator.Tests.TestCases
+namespace ObfuscatorUnitTests.Tests.TestCases
 {
     public class MultiFileTest2
     {

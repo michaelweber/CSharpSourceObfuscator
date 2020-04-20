@@ -1,7 +1,7 @@
 ﻿using System;
 using System.IO.Compression;
 
-namespace RoslynObfuscator.Tests.TestCases
+namespace ObfuscatorUnitTests.Tests.TestCases
 {
     public class AggressiveRenamingTest
     {

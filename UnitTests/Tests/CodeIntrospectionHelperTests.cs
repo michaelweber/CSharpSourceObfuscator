@@ -5,10 +5,10 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using NUnit.Framework;
+using ObfuscatorUnitTests.Tests.TestCases;
 using RoslynObfuscator.Obfuscation;
-using RoslynObfuscator.Tests.TestCases;
 
-namespace RoslynObfuscator.Tests
+namespace ObfuscatorUnitTests.Tests
 {
     [TestFixture]
     class CodeIntrospectionHelperTests

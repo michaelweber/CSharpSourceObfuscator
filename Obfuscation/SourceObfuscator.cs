@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO.Compression;
 using System.Linq;
 using Microsoft.CodeAnalysis;
@@ -294,6 +295,30 @@ namespace RoslynObfuscator.Obfuscation
             }
 
             return treeWithEncryptedStrings;
+        }
+
+        public SyntaxTree HideLongStringLiteralsInImage(SyntaxTree syntaxTree, Image image,
+            bool injectStegoHelper = true)
+        {
+            List<SyntaxToken> longStringLiteralTokens =
+                (from token in syntaxTree.GetRoot().DescendantTokens()
+                where token.IsKind(SyntaxKind.StringLiteralToken) && token.ValueText.Length > 1000
+                select token).ToList();
+
+
+            SyntaxTree newSyntaxTree = syntaxTree;
+
+            // foreach (SyntaxToken stringLiteralToken in longStringLiteralTokens)
+            // {
+            //     Bitmap nonIndexedImage = SteganographyHelper.CreateNonIndexedImage(image);
+            //     Bitmap stegoImage = SteganographyHelper.MergeText(stringLiteralToken.ValueText, nonIndexedImage);
+            //
+            //     string hiddenText = SteganographyHelper.ExtractText(stegoImage);
+            //     stegoImage.Save(@"S:\projects\malware-dropper\RoslynObfuscator\stego.bmp");
+            // }
+
+            return newSyntaxTree;
+
         }
 
         public Compilation ObfuscateIdentifiers(Compilation compilation)

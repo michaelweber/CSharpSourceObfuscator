@@ -7,11 +7,11 @@ using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using NUnit.Framework;
+using ObfuscatorUnitTests.Tests.TestCases;
 using RoslynObfuscator.Obfuscation;
-using RoslynObfuscator.Tests.TestCases;
 
 
-namespace RTSourceObfuscator.Tests
+namespace ObfuscatorUnitTests.Tests
 {
     [TestFixture]
     class SourceObfuscatorTests
