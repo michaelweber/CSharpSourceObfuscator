@@ -12,7 +12,8 @@ namespace RoslynObfuscator.Obfuscation.InjectedClasses
     {
         StringEncryptor,
         IndirectObjectLoader,
-        StegoResourceLoader
+        StegoResourceLoader,
+        Properties
     }
     public static class InjectedClassHelper
     {
@@ -44,6 +45,9 @@ namespace RoslynObfuscator.Obfuscation.InjectedClasses
                     break;
                 case InjectableClasses.StegoResourceLoader:
                     pathToRead += "StegoResourceLoader.cs";
+                    break;
+                case InjectableClasses.Properties:
+                    pathToRead += "Properties.cs";
                     break;
                 default:
                     throw new ArgumentException("Unknown Injectable Class Path to Fetch");

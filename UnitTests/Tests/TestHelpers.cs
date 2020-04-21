@@ -80,6 +80,7 @@ namespace ObfuscatorUnitTests.Tests.TestCases
                 typeof(System.IO.Compression.CompressionMode).Assembly,
                 typeof(System.Xml.DtdProcessing).Assembly,
                 typeof(System.Xml.Linq.ReaderOptions).Assembly,
+                typeof(System.Media.SoundPlayer).Assembly,
                 typeof(System.Linq.Enumerable).Assembly,
                 typeof(System.Reflection.Assembly).Assembly,
                 typeof(System.Drawing.Bitmap).Assembly,

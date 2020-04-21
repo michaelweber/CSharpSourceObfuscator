@@ -31,7 +31,8 @@ namespace RoslynObfuscator.Obfuscation
 
         private PolymorphicCodeOptions polymorphicCodeOptions;
 
-        private List<ResourceDescription> assemblyResources;
+        private List<EmbeddedResourceData> assemblyResources;
+
 
 		public SourceObfuscator(PolymorphicCodeOptions codeOptions = null)
         {
@@ -48,7 +49,7 @@ namespace RoslynObfuscator.Obfuscation
 
             ObfuscatedNamespace = PolymorphicGenerator.GetRandomIdentifier(polymorphicCodeOptions);
 
-            assemblyResources = new List<ResourceDescription>();
+            assemblyResources = new List<EmbeddedResourceData>();
 
             renamedMembers = new Dictionary<string, string>();
             renamedNamespaces = new Dictionary<NameSyntax, string>();
@@ -280,6 +281,30 @@ namespace RoslynObfuscator.Obfuscation
             return treeWithEncryptedStrings;
         }
 
+        private Compilation InjectClassIntoCompilation(Compilation compilation, InjectableClasses classToInject)
+        {
+            switch (classToInject)
+            {
+                case InjectableClasses.Properties:
+                    string injectedSourceText = InjectedClassHelper.GetInjectableClassSourceText(classToInject);
+                    injectedSourceText = injectedSourceText.Replace("REPLACEME", compilation.AssemblyName);
+                    string methodFormatString = "internal static UnmanagedMemoryStream {0} {{ get {{ return Resources.ResourceManager.GetStream(\"{0}\", Resources.resourceCulture); }} }}\n";
+                    string embeddedResourceMethods = "";
+                    foreach (var embeddedResource in assemblyResources)
+                    {
+                        embeddedResourceMethods += string.Format(methodFormatString, embeddedResource.Name, embeddedResource.Name);
+                    }
+
+                    injectedSourceText =
+                        injectedSourceText.Replace("/**EMBEDDEDRESOURCESHERE**/", embeddedResourceMethods);
+                    SyntaxTree propertiesTree = CSharpSyntaxTree.ParseText(injectedSourceText);
+                    compilation = compilation.AddSyntaxTrees(propertiesTree);
+                    return compilation;
+                default:
+                    throw new NotImplementedException();
+            }
+        }
+
         private SyntaxTree InjectClassIntoTree(SyntaxTree syntaxTree, InjectableClasses classToInject)
         {
             string injectedSourceText = InjectedClassHelper.GetInjectableClassSourceText(classToInject);
@@ -319,15 +344,25 @@ namespace RoslynObfuscator.Obfuscation
                 string resourceName = PolymorphicGenerator.GetRandomIdentifier(polymorphicCodeOptions);
 
 
-                string tempWavPath = Path.GetTempFileName();
-                File.WriteAllBytes(tempWavPath, garbageWav);
+                // string tempWavPath = Path.GetTempFileName();
+                // File.WriteAllBytes(tempWavPath, garbageWav);
+
+
+                EmbeddedResourceData embeddedData = new EmbeddedResourceData()
+                {
+                    Data = garbageWav,
+                    Name = resourceName
+                };
+
+                assemblyResources.Add(embeddedData);
 
                 // Add resource under the namespace AND assembly
-                var resourceDescription = new ResourceDescription(
-                    string.Format("{0}.Resources.resources", ObfuscatedNamespace),
-                    () => File.OpenRead(tempWavPath),
-                    true);
-                assemblyResources.Add(resourceDescription);
+                // var resourceDescription = new ResourceDescription(
+                //     string.Format("{0}.Resources.resources", ObfuscatedNamespace),
+                //     resourceName,
+                //     () => File.OpenRead(tempWavPath),
+                //     true);
+                // assemblyResources.Add(resourceDescription);
 
 
                 // ResourceDescription rd = new ResourceDescription(resourceName, () => new MemoryStream(garbageWav),true);
@@ -497,6 +532,21 @@ namespace RoslynObfuscator.Obfuscation
 
         public bool EmitAssembly(Compilation compilation, string filePath)
         {
+            ResourceDescription rd = null;
+
+            if (assemblyResources.Count > 0)
+            {
+                compilation = InjectClassIntoCompilation(compilation, InjectableClasses.Properties);
+
+                string generatedResxFilePath = ResourceFileHelper.CreateResXFromEmbeddedResourceData(assemblyResources);
+                Stream resourceStream = ResourceFileHelper.ReadResXFileAsMemoryStream(generatedResxFilePath);
+
+                string resourceName = string.Format("{0}.Properties.Resources.resources", compilation.AssemblyName);
+
+                rd = new ResourceDescription(resourceName,
+                    () => resourceStream,
+                    true);
+            }
 
             foreach (SyntaxTree tree in compilation.SyntaxTrees)
             {
@@ -504,10 +554,12 @@ namespace RoslynObfuscator.Obfuscation
                 Console.WriteLine(treeString);
             }
 
+            CSharpCompilationOptions compilationOptions = new CSharpCompilationOptions(OutputKind.ConsoleApplication)
+                .WithOptimizationLevel(OptimizationLevel.Release)
+                .WithPlatform(Platform.X64);
+            compilation = compilation.WithOptions(compilationOptions);
+            EmitResult result = compilation.Emit(filePath, manifestResources: new List<ResourceDescription>(){rd});
 
-            
-
-            EmitResult result = compilation.Emit(filePath, manifestResources: assemblyResources);
             if (!result.Success)
             {
                 throw new Exception("Emit Failed");
