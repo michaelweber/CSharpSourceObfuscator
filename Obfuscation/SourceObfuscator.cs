@@ -1,12 +1,19 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Resources;
+using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Emit;
 using Microsoft.CodeAnalysis.Text;
+using RoslynObfuscator.Obfuscation.Cryptography;
 using RoslynObfuscator.Obfuscation.InjectedClasses;
 
 
@@ -24,6 +31,8 @@ namespace RoslynObfuscator.Obfuscation
 
         private PolymorphicCodeOptions polymorphicCodeOptions;
 
+        private List<ResourceDescription> assemblyResources;
+
 		public SourceObfuscator(PolymorphicCodeOptions codeOptions = null)
         {
             polymorphicCodeOptions = codeOptions;
@@ -39,6 +48,8 @@ namespace RoslynObfuscator.Obfuscation
 
             ObfuscatedNamespace = PolymorphicGenerator.GetRandomIdentifier(polymorphicCodeOptions);
 
+            assemblyResources = new List<ResourceDescription>();
+
             renamedMembers = new Dictionary<string, string>();
             renamedNamespaces = new Dictionary<NameSyntax, string>();
         }
@@ -47,7 +58,7 @@ namespace RoslynObfuscator.Obfuscation
         {
             if (symbol == null)
             {
-                string guessedLookupName = this.renamedMembers.Keys.Where(key => key.EndsWith(token.ValueText)).FirstOrDefault();
+                string guessedLookupName = this.renamedMembers.Keys.FirstOrDefault(key => key.EndsWith(token.ValueText));
                 if (guessedLookupName == null)
                 {
                     return "UNKNOWNSYMBOL::" + token.ValueText;
@@ -215,15 +226,7 @@ namespace RoslynObfuscator.Obfuscation
             newSourceText = newSourceText.WithChanges(changes);
             SyntaxTree newTree = syntaxTree.WithChangedText(newSourceText);
 
-            string iolSourceText = InjectedClassHelper.GetInjectableClassSourceText(InjectedClassHelper
-                .InjectableClasses
-                .IndirectObjectLoader);
-            SyntaxTree iolTree = CSharpSyntaxTree.ParseText(iolSourceText);
-            ClassDeclarationSyntax iolClass = CodeIntrospectionHelper.GetFirstClassDeclarationFromSyntaxTree(iolTree);
-
-            newTree = CodeModificationHelper.InsertClassDeclarationIntoSyntaxTree(newTree, iolClass);
-            newTree = CodeModificationHelper.AddImportsToSyntaxTree(newTree, iolTree);
-
+            newTree = InjectClassIntoTree(newTree, InjectableClasses.IndirectObjectLoader);
             return newTree;
         }
 
@@ -254,26 +257,6 @@ namespace RoslynObfuscator.Obfuscation
             return compilation;
         }
 
-
-        private SyntaxTree InjectStringEncryptor(SyntaxTree syntaxTree)
-        {
-            string encryptorSourceText = InjectedClassHelper.GetInjectableClassSourceText(InjectedClassHelper
-                .InjectableClasses
-                .StringEncryptor);
-
-            encryptorSourceText = encryptorSourceText.Replace("RANDOMIZEME", StringEncryptor.Key);
-
-            SyntaxTree encryptorTree = CSharpSyntaxTree.ParseText(encryptorSourceText);
-
-            ClassDeclarationSyntax encryptorClass =
-                CodeIntrospectionHelper.GetFirstClassDeclarationFromSyntaxTree(encryptorTree);
-
-            SyntaxTree modifiedTree = CodeModificationHelper.InsertClassDeclarationIntoSyntaxTree(syntaxTree, encryptorClass);
-            modifiedTree = CodeModificationHelper.AddImportsToSyntaxTree(modifiedTree, encryptorTree);
-
-            return modifiedTree;
-        }
-
         public SyntaxTree ObfuscateStringConstants(SyntaxTree syntaxTree, bool injectStringEncryptor = true)
         {
             string replacementFormatString = "StringEncryptor.DecryptString(\"{0}\")";
@@ -291,14 +274,33 @@ namespace RoslynObfuscator.Obfuscation
 
             if (injectStringEncryptor)
             {
-                treeWithEncryptedStrings = InjectStringEncryptor(treeWithEncryptedStrings);
+                treeWithEncryptedStrings = InjectClassIntoTree(treeWithEncryptedStrings, InjectableClasses.StringEncryptor);
             }
 
             return treeWithEncryptedStrings;
         }
 
-        public SyntaxTree HideLongStringLiteralsInImage(SyntaxTree syntaxTree, Image image,
-            bool injectStegoHelper = true)
+        private SyntaxTree InjectClassIntoTree(SyntaxTree syntaxTree, InjectableClasses classToInject)
+        {
+            string injectedSourceText = InjectedClassHelper.GetInjectableClassSourceText(classToInject);
+
+            if (classToInject == InjectableClasses.StringEncryptor)
+            {
+                injectedSourceText = injectedSourceText.Replace("RANDOMIZEME", StringEncryptor.Key);
+            }
+
+            SyntaxTree injectedTree = CSharpSyntaxTree.ParseText(injectedSourceText);
+
+            ClassDeclarationSyntax injectedClass =
+                CodeIntrospectionHelper.GetFirstClassDeclarationFromSyntaxTree(injectedTree);
+
+            SyntaxTree modifiedTree = CodeModificationHelper.InsertClassDeclarationIntoSyntaxTree(syntaxTree, injectedClass);
+            modifiedTree = CodeModificationHelper.AddImportsToSyntaxTree(modifiedTree, injectedTree);
+
+            return modifiedTree;
+        }
+
+        public SyntaxTree HideLongStringLiteralsInResource(SyntaxTree syntaxTree, bool injectStegoHelper = true)
         {
             List<SyntaxToken> longStringLiteralTokens =
                 (from token in syntaxTree.GetRoot().DescendantTokens()
@@ -307,15 +309,42 @@ namespace RoslynObfuscator.Obfuscation
 
 
             SyntaxTree newSyntaxTree = syntaxTree;
+            List<TextChange> changes = new List<TextChange>();
 
-            // foreach (SyntaxToken stringLiteralToken in longStringLiteralTokens)
-            // {
-            //     Bitmap nonIndexedImage = SteganographyHelper.CreateNonIndexedImage(image);
-            //     Bitmap stegoImage = SteganographyHelper.MergeText(stringLiteralToken.ValueText, nonIndexedImage);
-            //
-            //     string hiddenText = SteganographyHelper.ExtractText(stegoImage);
-            //     stegoImage.Save(@"S:\projects\malware-dropper\RoslynObfuscator\stego.bmp");
-            // }
+            foreach (SyntaxToken stringLiteralToken in longStringLiteralTokens)
+            {
+                string longStringVal = stringLiteralToken.ValueText;
+                byte[] payload = Encoding.UTF8.GetBytes(longStringVal);
+                byte[] garbageWav = AudioSteganography.GenerateGarbageWAVFileForPayload(payload);
+                string resourceName = PolymorphicGenerator.GetRandomIdentifier(polymorphicCodeOptions);
+
+
+                string tempWavPath = Path.GetTempFileName();
+                File.WriteAllBytes(tempWavPath, garbageWav);
+
+                // Add resource under the namespace AND assembly
+                var resourceDescription = new ResourceDescription(
+                    string.Format("{0}.Resources.resources", ObfuscatedNamespace),
+                    () => File.OpenRead(tempWavPath),
+                    true);
+                assemblyResources.Add(resourceDescription);
+
+
+                // ResourceDescription rd = new ResourceDescription(resourceName, () => new MemoryStream(garbageWav),true);
+                // assemblyResources.Add(rd);
+                string longLoadFormatString =
+                    "StegoResourceLoader.GetPayloadFromWavFile(StegoResourceLoader.GetResourceBytes(\"{0}\"))";
+
+                changes.Add(new TextChange(stringLiteralToken.Span, string.Format(longLoadFormatString, resourceName)));
+            }
+
+            SourceText newText = syntaxTree.GetText().WithChanges(changes);
+            newSyntaxTree = syntaxTree.WithChangedText(newText);
+
+            if (injectStegoHelper)
+            {
+                newSyntaxTree = InjectClassIntoTree(newSyntaxTree, InjectableClasses.StegoResourceLoader);
+            }
 
             return newSyntaxTree;
 
@@ -428,7 +457,7 @@ namespace RoslynObfuscator.Obfuscation
             return changes;
         }
 
-        private SyntaxTree ObfuscateNamespaces(SyntaxTree tree)
+        public SyntaxTree ObfuscateNamespaces(SyntaxTree tree)
         {
             List<NameSyntax> namespaceNodes = CodeIntrospectionHelper.GetUserNamespacesFromTree(tree);
 
@@ -464,6 +493,27 @@ namespace RoslynObfuscator.Obfuscation
             stage3 = syntaxTree.GetText();
 
             return syntaxTree;
+        }
+
+        public bool EmitAssembly(Compilation compilation, string filePath)
+        {
+
+            foreach (SyntaxTree tree in compilation.SyntaxTrees)
+            {
+                string treeString = tree.ToString();
+                Console.WriteLine(treeString);
+            }
+
+
+            
+
+            EmitResult result = compilation.Emit(filePath, manifestResources: assemblyResources);
+            if (!result.Success)
+            {
+                throw new Exception("Emit Failed");
+            }
+
+            return true;
         }
 
 

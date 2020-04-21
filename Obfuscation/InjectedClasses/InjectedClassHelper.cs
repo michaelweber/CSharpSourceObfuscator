@@ -8,13 +8,15 @@ using System.Threading.Tasks;
 
 namespace RoslynObfuscator.Obfuscation.InjectedClasses
 {
+    public enum InjectableClasses
+    {
+        StringEncryptor,
+        IndirectObjectLoader,
+        StegoResourceLoader
+    }
     public static class InjectedClassHelper
     {
-        public enum InjectableClasses
-        {
-            StringEncryptor,
-            IndirectObjectLoader
-        }
+
         public static string AssemblyDirectory
         {
             get
@@ -39,6 +41,9 @@ namespace RoslynObfuscator.Obfuscation.InjectedClasses
                     break;
                 case InjectableClasses.StringEncryptor:
                     pathToRead += "StringEncryptor.cs";
+                    break;
+                case InjectableClasses.StegoResourceLoader:
+                    pathToRead += "StegoResourceLoader.cs";
                     break;
                 default:
                     throw new ArgumentException("Unknown Injectable Class Path to Fetch");

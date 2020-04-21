@@ -96,8 +96,6 @@ namespace RoslynObfuscator.Obfuscation
             return model.SyntaxTree.WithChangedText(newSourceText);
         }
 
-
-
         public static IEnumerable<TextSpan> GetRenameSpans(SemanticModel model, in SyntaxToken token)
         {
             var node = token.Parent;

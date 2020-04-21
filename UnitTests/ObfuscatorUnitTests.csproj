@@ -6,6 +6,7 @@
     <LangVersion>Latest</LangVersion>
     <RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
     <DisableMSBuildAssemblyCopyCheck>true</DisableMSBuildAssemblyCopyCheck>
+    <StartupObject>ObfuscatorUnitTests.Tests.TestCases.AggressiveRenamingTest</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>

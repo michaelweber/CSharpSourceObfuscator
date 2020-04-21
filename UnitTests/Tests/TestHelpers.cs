@@ -80,6 +80,7 @@ namespace ObfuscatorUnitTests.Tests.TestCases
                 typeof(System.IO.Compression.CompressionMode).Assembly,
                 typeof(System.Xml.DtdProcessing).Assembly,
                 typeof(System.Xml.Linq.ReaderOptions).Assembly,
+                typeof(System.Linq.Enumerable).Assembly,
                 typeof(System.Reflection.Assembly).Assembly,
                 typeof(System.Drawing.Bitmap).Assembly,
                 typeof(System.Text.Encoding).Assembly
@@ -90,7 +91,7 @@ namespace ObfuscatorUnitTests.Tests.TestCases
 
         public static Compilation GetIndirectObjectLoaderCompilation()
         {
-            string indirectObjectLoaderCode = InjectedClassHelper.GetInjectableClassSourceText(InjectedClassHelper.InjectableClasses.IndirectObjectLoader);
+            string indirectObjectLoaderCode = InjectedClassHelper.GetInjectableClassSourceText(InjectableClasses.IndirectObjectLoader);
             SyntaxTree iojSyntaxTree = CSharpSyntaxTree.ParseText(indirectObjectLoaderCode);
 
             var compilation = CSharpCompilation.Create("indirectObjectLoader");
@@ -101,7 +102,7 @@ namespace ObfuscatorUnitTests.Tests.TestCases
 
         public static Compilation GetStringEncryptorCompilation()
         {
-            string stringEncryptorCode = InjectedClassHelper.GetInjectableClassSourceText(InjectedClassHelper.InjectableClasses.StringEncryptor); ;
+            string stringEncryptorCode = InjectedClassHelper.GetInjectableClassSourceText(InjectableClasses.StringEncryptor); ;
             SyntaxTree seSyntaxTree = CSharpSyntaxTree.ParseText(stringEncryptorCode);
 
             var compilation = CSharpCompilation.Create("stringEncryptor");
