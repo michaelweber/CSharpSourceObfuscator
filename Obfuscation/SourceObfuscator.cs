@@ -5,6 +5,7 @@ using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Reflection;
 using System.Resources;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -32,6 +33,11 @@ namespace RoslynObfuscator.Obfuscation
         private PolymorphicCodeOptions polymorphicCodeOptions;
 
         private List<EmbeddedResourceData> assemblyResources;
+
+        private static readonly string[] LibrarariesToIgnore = 
+        {
+            "mscorlib",
+        };
 
 
 		public SourceObfuscator(PolymorphicCodeOptions codeOptions = null)
@@ -471,7 +477,18 @@ namespace RoslynObfuscator.Obfuscation
 
                 ISymbol symbol = CodeIntrospectionHelper.GetSymbolForToken(model, identifier);
 
-                  IEnumerable<TextSpan> renameSpans = CodeModificationHelper.GetRenameSpans(model, identifier);
+                //Make sure we're only renaming symbols that are from the compilation assembly
+                if (symbol != null)
+                {
+                    string targetAssemblyName = compilation.AssemblyName;
+                    string assemblyDisplayName = symbol.ContainingAssembly.Identity.GetDisplayName();
+                    if (!assemblyDisplayName.StartsWith(targetAssemblyName))
+                    {
+                        continue;
+                    }
+                }
+
+                IEnumerable<TextSpan> renameSpans = CodeModificationHelper.GetRenameSpans(model, identifier);
 
                 if (renameSpans == null)
                 {

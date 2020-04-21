@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Media;
+using System.Reflection;
+using System.Resources;
 using System.Text;
 
 namespace RoslynObfuscator.Obfuscation.InjectedClasses
@@ -13,9 +15,9 @@ namespace RoslynObfuscator.Obfuscation.InjectedClasses
     {
         public static byte[] GetResourceBytes(string streamName)
         {
-            System.Reflection.Assembly asm = System.Reflection.Assembly.GetExecutingAssembly();
+            Assembly asm = Assembly.GetExecutingAssembly();
             string resourceName = asm.GetName().Name + ".Properties.Resources";
-            var rm = new System.Resources.ResourceManager(resourceName, asm);
+            var rm = new ResourceManager(resourceName, asm);
             Stream s = rm.GetStream(streamName);
             SoundPlayer sp = new SoundPlayer(s);
             byte[] buffer = new byte[sp.Stream.Length];

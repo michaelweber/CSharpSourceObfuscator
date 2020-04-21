@@ -69,6 +69,9 @@ namespace ObfuscatorUnitTests.Tests
             SyntaxTree resultTree = obfuscator.ObfuscateNamespaces(longBadStringTree);
             resultTree = obfuscator.HideLongStringLiteralsInResource(resultTree);
             longBadStringCompilation = longBadStringCompilation.ReplaceSyntaxTree(longBadStringTree, resultTree);
+
+            longBadStringCompilation = obfuscator.ObfuscateStringConstants(longBadStringCompilation);
+            longBadStringCompilation = obfuscator.ObfuscateIdentifiers(longBadStringCompilation);
             obfuscator.EmitAssembly(longBadStringCompilation, TestHelpers.AssemblyDirectory + Path.DirectorySeparatorChar + "LongString.exe");
         }
     }
