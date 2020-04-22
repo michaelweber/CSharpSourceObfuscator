@@ -14,12 +14,22 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Emit;
 using Microsoft.CodeAnalysis.Text;
+using NUnit.Framework.Constraints;
 using RoslynObfuscator.Obfuscation.Cryptography;
 using RoslynObfuscator.Obfuscation.InjectedClasses;
 
 
 namespace RoslynObfuscator.Obfuscation
 {
+    public enum ObfuscationType
+    {
+        IdentifierObfuscation,
+        StringEncryption,
+        PInvokeObfuscation,
+        EmbeddedResourceObfuscation,
+        NamespaceObfuscation,
+        TypeReflectionObfuscation
+    }
     public class SourceObfuscator
     {
         private Dictionary<NameSyntax, string> renamedNamespaces;
@@ -303,7 +313,17 @@ namespace RoslynObfuscator.Obfuscation
 
                     injectedSourceText =
                         injectedSourceText.Replace("/**EMBEDDEDRESOURCESHERE**/", embeddedResourceMethods);
-                    SyntaxTree propertiesTree = CSharpSyntaxTree.ParseText(injectedSourceText);
+
+                    LanguageVersion versionInUse =
+                        ((CSharpParseOptions) compilation.SyntaxTrees.First().Options).LanguageVersion;
+
+                    //Make sure we stay consistent with other parse versions in the tree
+                    CSharpParseOptions parseOptions = new CSharpParseOptions().WithLanguageVersion(versionInUse);
+
+                    SyntaxTree propertiesTree = CSharpSyntaxTree.ParseText(injectedSourceText, parseOptions);
+
+                    var version = ((CSharpParseOptions)propertiesTree.Options).LanguageVersion;
+
                     compilation = compilation.AddSyntaxTrees(propertiesTree);
                     return compilation;
                 default:
@@ -331,13 +351,64 @@ namespace RoslynObfuscator.Obfuscation
             return modifiedTree;
         }
 
+        delegate SyntaxTree DObfuscateTreeWithInjectedClass(SyntaxTree tree, bool injectRelevantHelper);
+        delegate SyntaxTree DObfuscateTree(SyntaxTree tree);
+
+        public Compilation ObfuscateCompilation(Compilation compilation, ObfuscationType obfuscationType)
+        {
+            DObfuscateTreeWithInjectedClass obfuscateAndInjectTreeDelegate = null;
+            DObfuscateTree obfuscateTreeDelegate = null;
+
+            switch (obfuscationType)
+            {
+                case ObfuscationType.PInvokeObfuscation:
+                    obfuscateAndInjectTreeDelegate = ObfuscatePInvokeCalls;
+                    break;
+                case ObfuscationType.EmbeddedResourceObfuscation:
+                    obfuscateAndInjectTreeDelegate = HideLongStringLiteralsInResource;
+                    break;
+                case ObfuscationType.NamespaceObfuscation:
+                    obfuscateTreeDelegate = ObfuscateNamespaces;
+                    break;
+                default:
+                    throw new NotImplementedException();
+            }
+
+            List<SyntaxTree> oldTrees = compilation.SyntaxTrees.ToList();
+
+            bool injectedClass = false;
+
+            foreach (SyntaxTree tree in oldTrees)
+            {
+                SyntaxTree oldTree = tree;
+                SyntaxTree newTree;
+                if (obfuscateAndInjectTreeDelegate != null)
+                {
+                    newTree = obfuscateAndInjectTreeDelegate(tree, !injectedClass);
+                }
+                else
+                {
+                    newTree = obfuscateTreeDelegate(tree);
+                }
+                    
+                injectedClass = true;
+                compilation = compilation.ReplaceSyntaxTree(oldTree, newTree);
+            }
+
+            return compilation;
+        }
+
+        public Compilation HideLongStringLiteralsInResource(Compilation compilation)
+        {
+            return ObfuscateCompilation(compilation, ObfuscationType.EmbeddedResourceObfuscation);
+        }
+
         public SyntaxTree HideLongStringLiteralsInResource(SyntaxTree syntaxTree, bool injectStegoHelper = true)
         {
             List<SyntaxToken> longStringLiteralTokens =
                 (from token in syntaxTree.GetRoot().DescendantTokens()
                 where token.IsKind(SyntaxKind.StringLiteralToken) && token.ValueText.Length > 1000
                 select token).ToList();
-
 
             SyntaxTree newSyntaxTree = syntaxTree;
             List<TextChange> changes = new List<TextChange>();
@@ -349,11 +420,6 @@ namespace RoslynObfuscator.Obfuscation
                 byte[] garbageWav = AudioSteganography.GenerateGarbageWAVFileForPayload(payload);
                 string resourceName = PolymorphicGenerator.GetRandomIdentifier(polymorphicCodeOptions);
 
-
-                // string tempWavPath = Path.GetTempFileName();
-                // File.WriteAllBytes(tempWavPath, garbageWav);
-
-
                 EmbeddedResourceData embeddedData = new EmbeddedResourceData()
                 {
                     Data = garbageWav,
@@ -362,17 +428,6 @@ namespace RoslynObfuscator.Obfuscation
 
                 assemblyResources.Add(embeddedData);
 
-                // Add resource under the namespace AND assembly
-                // var resourceDescription = new ResourceDescription(
-                //     string.Format("{0}.Resources.resources", ObfuscatedNamespace),
-                //     resourceName,
-                //     () => File.OpenRead(tempWavPath),
-                //     true);
-                // assemblyResources.Add(resourceDescription);
-
-
-                // ResourceDescription rd = new ResourceDescription(resourceName, () => new MemoryStream(garbageWav),true);
-                // assemblyResources.Add(rd);
                 string longLoadFormatString =
                     "StegoResourceLoader.GetPayloadFromWavFile(StegoResourceLoader.GetResourceBytes(\"{0}\"))";
 
@@ -432,7 +487,8 @@ namespace RoslynObfuscator.Obfuscation
                 {
                     SourceText changedText = tree.GetText().WithChanges(changes);
                     SyntaxTree newTree = tree.WithChangedText(changedText);
-                    newTree = ObfuscateNamespaces(newTree);
+                    // Pulling this into its own functionality
+                    // newTree = ObfuscateNamespaces(newTree);
                     compilation = compilation.ReplaceSyntaxTree(oldTree, newTree);
                 }
                 catch (ArgumentException arg)
@@ -481,8 +537,23 @@ namespace RoslynObfuscator.Obfuscation
                 if (symbol != null)
                 {
                     string targetAssemblyName = compilation.AssemblyName;
-                    string assemblyDisplayName = symbol.ContainingAssembly.Identity.GetDisplayName();
-                    if (!assemblyDisplayName.StartsWith(targetAssemblyName))
+                    string targetNamespace = ObfuscatedNamespace;
+                    IAssemblySymbol containingAssembly = symbol.ContainingAssembly;
+
+                    //Check if the symbol being modified belongs to a different assembly
+                    if (containingAssembly != null)
+                    {
+                        string assemblyName = containingAssembly.Identity.GetDisplayName();
+                        if (!assemblyName.StartsWith(targetAssemblyName))
+                        {
+                            continue;
+                        }
+                    }
+
+                    //Sometimes (such as when the symbol is System), there is no containing assembly
+                    //In that case make sure the namespace matches
+                    string assemblyDisplayName = symbol.ToDisplayString();
+                    if (!assemblyDisplayName.StartsWith(targetNamespace))
                     {
                         continue;
                     }
@@ -527,22 +598,39 @@ namespace RoslynObfuscator.Obfuscation
             return treeWithRandomizedNamespaces;
         }
 
+        public Compilation ObfuscateNamespaces(Compilation compilation)
+        {
+            return ObfuscateCompilation(compilation, ObfuscationType.NamespaceObfuscation);
+        }
+
+        public Compilation ObfuscatePInvokeCalls(Compilation compilation)
+        {
+            return ObfuscateCompilation(compilation, ObfuscationType.PInvokeObfuscation);
+        }
+        public SyntaxTree ObfuscatePInvokeCalls(SyntaxTree syntaxTree, bool injectPinvokeLoader = true)
+        {
+            throw new NotImplementedException();
+        }
+
         public SyntaxTree Obfuscate(SyntaxTree syntaxTree, Compilation compilation)
         {
             SourceText stage1, stage2, stage3;
 
             SyntaxTree oldTree = syntaxTree;
-
             syntaxTree = ObfuscateTypeReferences(syntaxTree,  compilation, new List<Type>() {typeof(GZipStream)});
-            stage1 = syntaxTree.GetText();
             compilation = compilation.ReplaceSyntaxTree(oldTree, syntaxTree);
+
             oldTree = syntaxTree;
             syntaxTree = ObfuscateStringConstants(syntaxTree);
             compilation = compilation.ReplaceSyntaxTree(oldTree, syntaxTree);
-            stage2 = syntaxTree.GetText();
-            syntaxTree = ObfuscateIdentifiers(syntaxTree, compilation);
 
-            stage3 = syntaxTree.GetText();
+            oldTree = syntaxTree;
+            syntaxTree = ObfuscateNamespaces(syntaxTree);
+            compilation = compilation.ReplaceSyntaxTree(oldTree, syntaxTree);
+
+            oldTree = syntaxTree;
+            syntaxTree = ObfuscateIdentifiers(syntaxTree, compilation);
+            compilation = compilation.ReplaceSyntaxTree(oldTree, syntaxTree);
 
             return syntaxTree;
         }
@@ -571,9 +659,11 @@ namespace RoslynObfuscator.Obfuscation
                 Console.WriteLine(treeString);
             }
 
+            //For now we output 64 bit binaries
             CSharpCompilationOptions compilationOptions = new CSharpCompilationOptions(OutputKind.ConsoleApplication)
                 .WithOptimizationLevel(OptimizationLevel.Release)
-                .WithPlatform(Platform.X64);
+                .WithPlatform(Platform.X64).WithAllowUnsafe(true); 
+
             compilation = compilation.WithOptions(compilationOptions);
             EmitResult result = compilation.Emit(filePath, manifestResources: new List<ResourceDescription>(){rd});
 

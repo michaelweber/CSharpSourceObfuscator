@@ -83,7 +83,7 @@ namespace RoslynObfuscator
                 SyntaxTree outputTree = CodeModificationHelper.RenameSymbol(model, compress, "SCRAMBLED");
                 Console.WriteLine(outputTree);
 
-                // TODO: Do analysis on the projects in the loaded solution 
+                // TODO: Create CLI interface for Exposing SourceObfuscator.cs
             }
         }
 

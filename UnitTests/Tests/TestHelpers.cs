@@ -69,7 +69,7 @@ namespace ObfuscatorUnitTests.Tests.TestCases
             return compilation;
         }
 
-        private static Assembly[] GetAssemblyArray()
+        public static Assembly[] GetAssemblyArray()
         {
             Assembly[] assemblies = new Assembly[]
             {
@@ -134,11 +134,6 @@ namespace ObfuscatorUnitTests.Tests.TestCases
             string programText = File.ReadAllText(path);
             SyntaxTree tree = CSharpSyntaxTree.ParseText(programText);
 
-            // var compilation = CSharpCompilation.CreateScriptCompilation("longBadString");
-            // compilation = GetAssemblyArray().Aggregate(compilation, (current, assembly) => current.AddReferences(MetadataReference.CreateFromFile(assembly.Location)));
-            // compilation = compilation.AddSyntaxTrees(tree);
-            // return compilation;
-
             Assembly[] assemblies = GetAssemblyArray();
 
             var compilation = CSharpCompilation.Create("obfuscated");
@@ -165,11 +160,7 @@ namespace ObfuscatorUnitTests.Tests.TestCases
 
         public static Compilation GetSharpDumpCompilation()
         {
-            //TODO: Generalize this so it's not a hardcoded path
-            var sharpDumpPath =
-                @"S:\projects\malware-dropper\SharpDump-master\Original\SharpDump-master\SharpDump\Program.cs";
-
-            string unobfuscatedProgramText = File.ReadAllText(sharpDumpPath);
+            string unobfuscatedProgramText = File.ReadAllText(GhostPackSolutionPaths.SharpDumpSrcPath);
 
             SyntaxTree tree = CSharpSyntaxTree.ParseText(unobfuscatedProgramText);
 
@@ -196,10 +187,41 @@ namespace ObfuscatorUnitTests.Tests.TestCases
 
             var workspace = _workspace;
 
-            //TODO: Generalize this so it's not a hardcoded path
-            var solutionPath =
-                @"S:\projects\malware-dropper\SafetyKatz-master\SafetyKatz.sln";
-            var solution = await workspace.OpenSolutionAsync(solutionPath);
+            var solution = await workspace.OpenSolutionAsync(GhostPackSolutionPaths.SafetyKatzSlnPath);
+            return solution;
+        }
+
+
+        public static Compilation GetSeatbeltCompilation()
+        {
+            string unobfuscatedProgramText = File.ReadAllText(GhostPackSolutionPaths.SeatbeltSrcPath);
+
+            SyntaxTree tree = CSharpSyntaxTree.ParseText(unobfuscatedProgramText);
+
+            Assembly[] assemblies = GetAssemblyArray();
+
+            var compilation = CSharpCompilation.Create("obfuscated");
+
+            compilation = assemblies.Aggregate(compilation, (current, assembly) => current.AddReferences(MetadataReference.CreateFromFile(assembly.Location)));
+
+            compilation = compilation.AddSyntaxTrees(tree);
+
+            return compilation;
+        }
+
+        public static async Task<Solution> GetSeatbeltSolution()
+        {
+            if (_workspace == null)
+            {
+                var visualStudioInstances = MSBuildLocator.QueryVisualStudioInstances().ToArray();
+                var instance = visualStudioInstances[0];
+                MSBuildLocator.RegisterInstance(instance);
+                _workspace = MSBuildWorkspace.Create();
+            }
+
+            var workspace = _workspace;
+
+            var solution = await workspace.OpenSolutionAsync(GhostPackSolutionPaths.SeatbeltSlnPath);
             return solution;
         }
     }
