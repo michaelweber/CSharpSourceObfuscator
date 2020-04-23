@@ -1,7 +1,9 @@
 # CSharpSourceObfuscator
 A C# Solution Source Obfuscator for avoiding AV signatures with minimal user interaction. Powered by the Roslyn C# library.
 
-The general approach for this project is that obfuscation can involve a series of transforms which we can apply in order to reduce detection rates and break signatures. Many of these transforms involve injecting additional functionality into the output binary. For example, if we encrypt every string, we'll need to also inject string decryption logic so that the strings are usable at runtime. Injected classes/functionality can be found in the `Obfuscation/InjectedClasses` folder.
+The goal of this project is to create a tool which, when provided with a path to a C# solution file, will obfuscate all of the source code and then generate a binary which is expected to bypass static analysis with minimal input from the user on an updated Windows 10 desktop. This is intended to extend the life of public C# red team tooling such as SpecterOps' GhostPack tools at https://github.com/GhostPack/. Once every payload in GhostPack can be compiled and executed on a fully patched Windows 10 machine, this project will be considered feature complete.
+
+The obfuscation approach for this project involves a series of transforms which we can apply in order to reduce detection rates and break signatures. Many of these transforms involve injecting additional functionality into the output binary. For example, if we encrypt every string, we'll need to also inject string decryption logic so that the strings are usable at runtime. Injected classes/functionality can be found in the `Obfuscation/InjectedClasses` folder.
 
 Transforms are done by importing the relevant Solution file, parsing each source file into a SyntaxTree using the Roslyn CodeAnalysis library, and then making changes. Currently the code mainly ives in the `SourceObfuscator.cs` class, but this will be refactored as more transforms are added.
 
@@ -56,4 +58,30 @@ using (IDisposable E0HC06B4RB = (IDisposable)(OMTW68YV0B.O0112X0Z2T(OMTW68YV0B.R
 {
     OMTW68YV0B.GYB6SV0I08(E0HC06B4RB, CC8GFD6UA5.H82K6NH9HD("ZjwrTSc="), new object[] {P7VQA1L0O9, 0, P7VQA1L0O9.Length});
 }
+~~~
+
+## Large Payload / Embedded Resource Obfuscation
+A common dropper technique for malware is to store an obfuscated version of the main payload, decrypt it at runtime, and then execute it. This is often done in memory to prevent the deobfuscated payload from ever touching disk. For example, the `SafetyKatz` project contains a base64 encoded version of a compressed Mimikatz binary which it manually loads using Win32 APIs at runtime. The payload itself is stored as a string in a `Constants.cs` file (at https://github.com/GhostPack/SafetyKatz/blob/master/SafetyKatz/Constants.cs). As a generalized mechanism for detecting this, AV ML solutions will be immediately suspicious of overly long strings. In my experience the difference between Windows Defender claiming a binary was malware or not was the length of the string - even if the string was completely garbage and there was no way to decrypt it.
+
+The PoC used by this obfuscator is to generate a fake audio resource, embed the payload bytes into that, and then extract it at runtime. The WAV generation process, defined in `Obfuscation/Cryptography/AudioSteganography.cs` will create a WAV header matching the size needed to contain the payload, then XOR the payload bytes against a generated key, and finally insert the key and payload into the sample data. *Note: This isn't actually steganography, the generated WAV file is purely white noise, but the effort is being made to confuse automation - if an analyst examines this file the game is already over.* We inject in the `StegoResourceLoader` class to handle the retrieval and decryption of the payload at runtime.
+
+In an attempt to confuse machine learning solutions, the WAV file, when extracted, is first passed into a `SoundPlayer` object. The stream is then worked with by accessing the `SoundPlayer.Stream` property. This effort alone is enough to prevent the majority of AV providers on VirusTotal from detecting a payload (statically). Most of this logic is stored within `Obfuscation/InjectedClasses/StegoResourceLoader.cs` - the transform changes something like:
+
+~~~
+// compressed mimikatz.exe output from Out-CompressedDLL
+public static string compressedMimikatzString = "zL17fBNV+jg8aVJIoWUCNFC1apC...another 250kb of stuff";
+~~~
+
+into:
+
+~~~
+// compressed mimikatz.exe output from Out-CompressedDLL
+public static string compressedMimikatzString = StegoResourceLoader.GetPayloadFromWavFile(StegoResourceLoader.GetResourceBytes("GKTRA477DW"));
+~~~        
+
+with strings encrypted and identifiers obfuscated we get:
+
+~~~
+// compressed mimikatz.exe output from Out-CompressedDLL
+public static string DC65W90MB5 = ADAFNUIT6P.FD19TXWJYX(ADAFNUIT6P.LCTS0L3XZM(YMY82OMG8W.CO1C4GFYLD("dAZ0BgARDRt7HQ==")));
 ~~~
