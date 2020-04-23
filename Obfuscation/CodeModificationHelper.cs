@@ -60,6 +60,47 @@ namespace RoslynObfuscator.Obfuscation
             return destTree.WithChangedText(destSourceText);
         }
 
+        public static string GetMetadataStringFromPInvokeSyntaxNode(MethodDeclarationSyntax pinvokeNode)
+        {
+            var dllImportAttribute = pinvokeNode.DescendantNodes().OfType<AttributeSyntax>().First(a => a.ToFullString().ToLower().StartsWith("dllimport"));
+            //The first attribute argument of DllImport is the Library - remove the "s
+            var libraryName = dllImportAttribute.ArgumentList.Arguments.First().Expression.ToString().Replace("\"", "");
+            var otherAttributeArgs = dllImportAttribute.ArgumentList.Arguments.Skip(1).ToList();
+            var entryPointSyntaxMatches = otherAttributeArgs
+                .Where(a => a.NameEquals.ToString().StartsWith("EntryPoint")).ToList();
+            var CharSetSyntaxMatches = otherAttributeArgs
+                .Where(a => a.NameEquals.ToString().StartsWith("CharSet")).ToList();
+
+            string entryPoint = "";
+            if (entryPointSyntaxMatches.Count > 0)
+            {
+                entryPoint = entryPointSyntaxMatches.First().Expression.ToString().Replace("\"", "");
+            }
+
+            string charSet = "CharSet.Auto";
+            if (CharSetSyntaxMatches.Count > 0)
+            {
+                charSet = CharSetSyntaxMatches.First().Expression.ToString().Replace("\"", "");
+            }
+
+            string functionName = pinvokeNode.Identifier.ToString();
+            string returnTypeString = pinvokeNode.ReturnType.ToString();
+            List<string> paramStrings = new List<string>();
+            foreach (var parameter in pinvokeNode.ParameterList.Parameters)
+            {
+                //For now we ignore MarshalAs attributes
+                var pString = parameter.WithAttributeLists(new SyntaxList<AttributeListSyntax>()).ToString();
+                paramStrings.Add(pString);
+            }
+
+            string metadataFormatString = "{0}:{1}|{2}|{3}|{4}";
+            string metadataName = (entryPoint.Length > 0) ? entryPoint : functionName;
+            string metadataString = string.Format(metadataFormatString, libraryName, charSet, metadataName, returnTypeString,
+                string.Join("|", paramStrings));
+
+            return metadataString;
+        }
+
 
         public static SyntaxTree AddImportsToSyntaxTree(SyntaxTree destTree, SyntaxTree srcTree)
         {

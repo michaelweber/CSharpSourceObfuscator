@@ -25,6 +25,12 @@ namespace ObfuscatorUnitTests.Tests
         [DllImport("kernel32.dll")]
         private static extern void GetSystemTime(out SYSTEMTIME lpSystemTime);
 
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        public static extern IntPtr LoadLibrary(string lpFileName);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Ansi, ExactSpelling = true, SetLastError = true)]
+        public static extern IntPtr GetProcAddress(IntPtr hModule, string procName);
+
         [StructLayout(LayoutKind.Sequential)]
         public struct SYSTEMTIME
         {
@@ -104,6 +110,29 @@ namespace ObfuscatorUnitTests.Tests
             Assert.AreEqual(test1.Month, test2.Month);
             Assert.AreEqual(test1.Day, test2.Day);
             Assert.AreEqual(test1.Hour, test2.Hour);
+        }
+
+        [Test]
+        public void TestPInvokeCharSetGetProcAddress()
+        {
+            IntPtr kernel32Ptr = LoadLibrary("kernel32.dll");
+            IntPtr procAddress = GetProcAddress(kernel32Ptr, "CreateThread");
+
+            // [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+            // public static extern IntPtr LoadLibrary(string lpFileName);
+            //
+            // [DllImport("kernel32.dll", CharSet = CharSet.Ansi, ExactSpelling = true, SetLastError = true)]
+            // public static extern IntPtr GetProcAddress(IntPtr hModule, string procName);
+
+            string kernel32mdString = "kernel32.dll:CharSet.Unicode|LoadLibrary|IntPtr|string lpFileName";
+            string getProcAddressmdString =
+                "kernel32.dll:CharSet.Ansi|GetProcAddress|IntPtr|IntPtr hModule|string procName";
+
+            IntPtr dynamicKernel32Ptr = (IntPtr)PInvokeLoader.Instance.InvokePInvokeFunction(kernel32mdString, new object[] {"kernel32.dll"});
+            IntPtr dynamicprocAddress = (IntPtr)PInvokeLoader.Instance.InvokePInvokeFunction(getProcAddressmdString, new object[] { dynamicKernel32Ptr, "CreateThread" });
+
+            Assert.AreEqual(kernel32Ptr, dynamicKernel32Ptr);
+            Assert.AreEqual(procAddress, dynamicprocAddress);
         }
     }
 }

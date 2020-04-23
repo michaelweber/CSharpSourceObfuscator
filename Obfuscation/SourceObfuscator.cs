@@ -626,18 +626,6 @@ namespace RoslynObfuscator.Obfuscation
             List<TextChange> changes = new List<TextChange>();
             foreach (var pinvokeNode in pinvokeNodes)
             {
-                var dllImportAttribute = pinvokeNode.DescendantNodes().OfType<AttributeSyntax>().First(a => a.ToFullString().ToLower().StartsWith("dllimport"));
-
-                //The first attribute argument of DllImport is the Library - remove the "s
-                var libraryName = dllImportAttribute.ArgumentList.Arguments.First().Expression.ToString().Replace("\"","");
-                var otherAttributeArgs = dllImportAttribute.ArgumentList.Arguments.Skip(1).ToList();
-                var entryPointSyntaxMatches = otherAttributeArgs
-                    .Where(a => a.NameEquals.ToString().StartsWith("EntryPoint")).ToList();
-                string entryPoint = "";
-                if (entryPointSyntaxMatches.Count > 0)
-                {
-                    entryPoint = entryPointSyntaxMatches.First().Expression.ToString().Replace("\"","");
-                }
                 string functionName = pinvokeNode.Identifier.ToString();
                 string returnTypeString = pinvokeNode.ReturnType.ToString();
                 List<string> paramStrings = new List<string>();
@@ -648,18 +636,17 @@ namespace RoslynObfuscator.Obfuscation
                     paramStrings.Add(pString);
                 }
 
-                string metadataFormatString = "{0}|{1}|{2}|{3}";
-                string metadataName = (entryPoint.Length > 0) ? entryPoint : functionName;
-                string metadataString = string.Format(metadataFormatString, libraryName, metadataName, returnTypeString,
-                    string.Join("|", paramStrings)); 
-
+                string metadataString = CodeModificationHelper.GetMetadataStringFromPInvokeSyntaxNode(pinvokeNode);
                 //Grab the modifiers string and remove the extern modifier
                 string modifiers = pinvokeNode.Modifiers.ToString().Replace("extern", "");
 
-                //public static returnType OldIdentifier(old, arguments, with, marshal, removed)
+                //public static returnType OldIdentifier(old, arguments, with, out marshal, removed)
                 //{
+                //  marshal = new MarshalObjectType();
                 //  object[] args = new object[] {old, arguments, with, marshal, removed};
-                //  return PInvokeLoader.Instance.InvokePInvokeFunction(signature, args);
+                //  var result = PInvokeLoader.Instance.InvokePInvokeFunction(signature, args);
+                //  marshal = args[3];
+                //  return result;
                 //}
                 string paramString = string.Join(", ", paramStrings);
                 string paramsAsArgString = string.Join(", ",

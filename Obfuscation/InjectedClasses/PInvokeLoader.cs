@@ -71,7 +71,7 @@ namespace RoslynObfuscator.Obfuscation.InjectedClasses
             return null;
         }
 
-        private Type BuildPInvokeFromMetadata(string functionName, string library, Type returnType, Type[] paramTypes, string[] argsMetadata)
+        private Type BuildPInvokeFromMetadata(string functionName, string library, CharSet charSet, Type returnType, Type[] paramTypes, string[] argsMetadata)
         {
             var typeBuilder = _module.DefineType(functionName + "Class", TypeAttributes.Class | TypeAttributes.Public);
 
@@ -104,7 +104,7 @@ namespace RoslynObfuscator.Obfuscation.InjectedClasses
                 returnType: returnType,  // typeof(void) if there is no return value.
                 parameterTypes: updatedParameters.ToArray(),
                 nativeCallConv: CallingConvention.Winapi,
-                nativeCharSet: CharSet.Auto);
+                nativeCharSet: charSet);
 
             /*
              //Might be needed for MarshalAs PInvoke expressions
@@ -142,7 +142,18 @@ namespace RoslynObfuscator.Obfuscation.InjectedClasses
 
             string[] parameters = invokeMetadata.Split('|');
 
-            string libName = parameters[0];
+            string libName = parameters[0].Split(':')[0];
+            CharSet charSet;
+            if (parameters[0].Split(':').Length > 1)
+            {
+                string charSetString = parameters[0].Split(':')[1];
+                bool charSetParsed = CharSet.TryParse(charSetString.Split('.')[1], out charSet);
+            }
+            else
+            {
+                charSet = CharSet.Auto;
+            }
+            
             string functionName = parameters[1];
             Type returnType = GetTypeFromString(parameters[2]);
             Type[] argTypes = args.Select(arg => arg.GetType()).ToArray();
@@ -156,7 +167,7 @@ namespace RoslynObfuscator.Obfuscation.InjectedClasses
             }
             else
             {
-                invocationType = BuildPInvokeFromMetadata(functionName, libName, returnType, argTypes, argMetadata);
+                invocationType = BuildPInvokeFromMetadata(functionName, libName, charSet, returnType, argTypes, argMetadata);
                 _cachedPInvokeTypes.Add(invokeMetadata, invocationType);
             }
 
