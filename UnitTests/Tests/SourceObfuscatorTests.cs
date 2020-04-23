@@ -37,12 +37,6 @@ namespace ObfuscatorUnitTests.Tests
         }
 
         [Test]
-        public void ObfuscateSolutionTest()
-        {
-
-        }
-
-        [Test]
         public void ReplaceUsingTest()
         {
             Compilation replaceUsingCompilation = TestHelpers.GetUsingReplaceTestCompilation();
@@ -131,6 +125,23 @@ namespace ObfuscatorUnitTests.Tests
 
             //Make sure that the Entry Point is left intact
             Assert.IsTrue(treeString.Contains("void Main(string[]"));
+        }
+
+        [Test]
+        public void TestSimplePInvokeReplacement()
+        {
+            Compilation compilation = TestHelpers.GetPinvokeSimpleTestCompilation();
+            // SyntaxTree tree = compilation.SyntaxTrees.First();
+            compilation = obfuscator.ObfuscatePInvokeCalls(compilation);
+            compilation = obfuscator.HideLongStringLiteralsInResource(compilation);
+            compilation = obfuscator.ObfuscateStringConstants(compilation);
+            compilation = obfuscator.ObfuscateNamespaces(compilation);
+            compilation = obfuscator.ObfuscateIdentifiers(compilation);
+
+            string treeString = compilation.SyntaxTrees.First().ToString();
+            Console.WriteLine(treeString);
+            obfuscator.EmitAssembly(compilation,
+                TestHelpers.AssemblyDirectory + Path.DirectorySeparatorChar + "pinvoke.exe");
         }
 
 

@@ -531,6 +531,13 @@ namespace RoslynObfuscator.Obfuscation
                     continue;
                 }
 
+                //TODO remove this
+                //Debugging section because I'm too lazy to use conditional breakpoints
+                // if (identifier.Text.Equals("Instance"))
+                // {
+                //     string letsDig = "True";
+                // }
+
                 ISymbol symbol = CodeIntrospectionHelper.GetSymbolForToken(model, identifier);
 
                 //Make sure we're only renaming symbols that are from the compilation assembly
@@ -550,12 +557,15 @@ namespace RoslynObfuscator.Obfuscation
                         }
                     }
 
-                    //Sometimes (such as when the symbol is System), there is no containing assembly
-                    //In that case make sure the namespace matches
-                    string assemblyDisplayName = symbol.ToDisplayString();
-                    if (!assemblyDisplayName.StartsWith(targetNamespace))
+                    if (containingAssembly == null)
                     {
-                        continue;
+                        //Sometimes (such as when the symbol is System), there is no containing assembly
+                        //In that case make sure the namespace matches
+                        string assemblyDisplayName = symbol.ToDisplayString();
+                        if (!assemblyDisplayName.StartsWith(targetNamespace))
+                        {
+                            continue;
+                        }
                     }
                 }
 
@@ -609,7 +619,105 @@ namespace RoslynObfuscator.Obfuscation
         }
         public SyntaxTree ObfuscatePInvokeCalls(SyntaxTree syntaxTree, bool injectPinvokeLoader = true)
         {
-            throw new NotImplementedException();
+            SyntaxTree newTree = syntaxTree;
+            var methodDeclarationNodes= syntaxTree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>();
+            var pinvokeNodes = methodDeclarationNodes.Where(method => method.AttributeLists.Count >= 1 && 
+                                                                             method.AttributeLists.Any(attributeList => attributeList.Attributes.Any(attribute => attribute.ToFullString().ToLower().StartsWith("dllimport")))).ToList();
+            List<TextChange> changes = new List<TextChange>();
+            foreach (var pinvokeNode in pinvokeNodes)
+            {
+                var dllImportAttribute = pinvokeNode.DescendantNodes().OfType<AttributeSyntax>().First(a => a.ToFullString().ToLower().StartsWith("dllimport"));
+
+                //The first attribute argument of DllImport is the Library - remove the "s
+                var libraryName = dllImportAttribute.ArgumentList.Arguments.First().Expression.ToString().Replace("\"","");
+                var otherAttributeArgs = dllImportAttribute.ArgumentList.Arguments.Skip(1).ToList();
+                var entryPointSyntaxMatches = otherAttributeArgs
+                    .Where(a => a.NameEquals.ToString().StartsWith("EntryPoint")).ToList();
+                string entryPoint = "";
+                if (entryPointSyntaxMatches.Count > 0)
+                {
+                    entryPoint = entryPointSyntaxMatches.First().Expression.ToString().Replace("\"","");
+                }
+                string functionName = pinvokeNode.Identifier.ToString();
+                string returnTypeString = pinvokeNode.ReturnType.ToString();
+                List<string> paramStrings = new List<string>();
+                foreach (var parameter in pinvokeNode.ParameterList.Parameters)
+                {
+                    //For now we ignore MarshalAs attributes
+                    var pString = parameter.WithAttributeLists(new SyntaxList<AttributeListSyntax>()).ToString();
+                    paramStrings.Add(pString);
+                }
+
+                string metadataFormatString = "{0}|{1}|{2}|{3}";
+                string metadataName = (entryPoint.Length > 0) ? entryPoint : functionName;
+                string metadataString = string.Format(metadataFormatString, libraryName, metadataName, returnTypeString,
+                    string.Join("|", paramStrings)); 
+
+                //Grab the modifiers string and remove the extern modifier
+                string modifiers = pinvokeNode.Modifiers.ToString().Replace("extern", "");
+
+                //public static returnType OldIdentifier(old, arguments, with, marshal, removed)
+                //{
+                //  object[] args = new object[] {old, arguments, with, marshal, removed};
+                //  return PInvokeLoader.Instance.InvokePInvokeFunction(signature, args);
+                //}
+                string paramString = string.Join(", ", paramStrings);
+                string paramsAsArgString = string.Join(", ",
+                    paramStrings.Select(paramString => paramString.Split(' ').Last()));
+
+                string postInvokeAssignments = "";
+                string preInvokeInitializations = "";
+                for (int index = 0; index < paramStrings.Count; index += 1)
+                {
+                    string parameter = paramStrings[index];
+                    string[] paramTokens = parameter.Split(' ');
+                    string modifierToken = paramTokens.First();
+                    //The second to last token is the Type
+                    string paramType = paramTokens[paramTokens.Length - 2];
+                    bool hasModifierToken = paramTokens.Length > 2;
+                    string paramName = paramTokens.Last();
+                    if (hasModifierToken && (modifierToken.Equals("ref") || modifierToken.Equals("out")))
+                    {
+                        string paramAssignmentFormatString = "\t{0} = ({1})args[{2}];\n";
+                        string paramAssignmentString = string.Format(paramAssignmentFormatString, paramName, paramType, index);
+                        postInvokeAssignments += paramAssignmentString;
+                    }
+
+                    if (hasModifierToken && modifierToken.Equals("out"))
+                    {
+                        //We're assuming there is an empty constructor here - will need to do more reflection if not
+                        string paramInitializationFormatString = "\t{0} = new {1}();\n";
+                        string paramInitializer = string.Format(paramInitializationFormatString, paramName, paramType);
+                        preInvokeInitializations += paramInitializer;
+                    }
+                    
+                }
+
+                string returnStatementFormatString = "return ({0})result;\n";
+                string returnStatement = string.Format(returnStatementFormatString, returnTypeString);
+                if (returnTypeString.ToLower().Equals("void"))
+                {
+                    returnStatement = "";
+                }
+
+                string pinvokeReplaceFormatString =
+                    "{0} {1} {2}({3})\n{{\n{4}\tobject[] args = new object[] {{{5}}};\n\tvar result = PInvokeLoader.Instance.InvokePInvokeFunction(\"{6}\", args);\n{7}{8}}}";
+
+                string codeReplacement = string.Format(pinvokeReplaceFormatString, modifiers.TrimEnd(), returnTypeString,
+                    functionName, paramString, preInvokeInitializations, paramsAsArgString, metadataString, postInvokeAssignments, returnStatement);
+
+                changes.Add(new TextChange(pinvokeNode.Span, codeReplacement));
+            }
+
+            SourceText newText = syntaxTree.GetText().WithChanges(changes);
+            newTree = syntaxTree.WithChangedText(newText);
+
+            if (injectPinvokeLoader)
+            {
+                newTree = InjectClassIntoTree(newTree, InjectableClasses.PInvokeLoader);
+            }
+
+            return newTree;
         }
 
         public SyntaxTree Obfuscate(SyntaxTree syntaxTree, Compilation compilation)
@@ -665,7 +773,15 @@ namespace RoslynObfuscator.Obfuscation
                 .WithPlatform(Platform.X64).WithAllowUnsafe(true); 
 
             compilation = compilation.WithOptions(compilationOptions);
-            EmitResult result = compilation.Emit(filePath, manifestResources: new List<ResourceDescription>(){rd});
+            EmitResult result;
+            if (rd == null)
+            {
+                result = compilation.Emit(filePath);
+            }
+            else
+            {
+                result = compilation.Emit(filePath, manifestResources: new List<ResourceDescription>() { rd });
+            }
 
             if (!result.Success)
             {

@@ -30,15 +30,17 @@ namespace RoslynObfuscator.Obfuscation
             var methodDeclarationNodes = descendants.Where(node => node.IsKind(SyntaxKind.MethodDeclaration)).Cast<MethodDeclarationSyntax>().ToList();
             var classDeclarationNodes= descendants.Where(node => node.IsKind(SyntaxKind.ClassDeclaration)).Cast<ClassDeclarationSyntax>().ToList();
             var variableDeclarationNodes = descendants.Where(node => node.IsKind(SyntaxKind.VariableDeclaration)).Cast<VariableDeclarationSyntax>().ToList();
+            var propertyDeclarationNodes= descendants.Where(node => node.IsKind(SyntaxKind.PropertyDeclaration)).Cast<PropertyDeclarationSyntax>().ToList();
             var parameterNodes = descendants.Where(node => node.IsKind(SyntaxKind.Parameter)).Cast<ParameterSyntax>().ToList();
 
             var methodIdentifiers = methodDeclarationNodes.Select(md => md.Identifier).ToList();
             var classIdentifiers = classDeclarationNodes.Select(cd => cd.Identifier).ToList();
             var variableIdentifiers = variableDeclarationNodes.SelectMany(vd => vd.Variables.Select(v => v.Identifier).ToList()).ToList();
+            var propertyIdentifiers = propertyDeclarationNodes.Select(pdn => pdn.Identifier).ToList();
             var parameterIdentifiers = parameterNodes.Select(pn => pn.Identifier).ToList();
 
             return userDefinedIdentifiers.Concat(methodIdentifiers).
-                Concat(classIdentifiers).Concat(variableIdentifiers).Concat(parameterIdentifiers).ToList();
+                Concat(classIdentifiers).Concat(variableIdentifiers).Concat(propertyIdentifiers).Concat(parameterIdentifiers).ToList();
         }
 
         public static List<SyntaxToken> GetIdentifierUsagesFromTree(SyntaxTree tree)

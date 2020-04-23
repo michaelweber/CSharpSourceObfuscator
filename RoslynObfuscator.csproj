@@ -29,6 +29,9 @@
     <Compile Update="Obfuscation\InjectedClasses\IndirectObjectLoader.cs">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Compile>
+    <Compile Update="Obfuscation\InjectedClasses\PInvokeLoader.cs">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Compile>
     <Compile Update="Obfuscation\InjectedClasses\Properties.cs">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Compile>

@@ -34,6 +34,27 @@ namespace ObfuscatorUnitTests.Tests
             }
         }
 
+        [Test]
+        public void MultiFileRenamingStaticRenameTest()
+        {
+            //This test exists because when a solution is used, for some reason the
+            //static Instance property in PInvokeLoader.cs isn't renamed though its usages are
+
+            Compilation compilation = TestHelpers.GetMultiFileTestCompilation();
+            SourceObfuscator obfuscator = new SourceObfuscator();
+
+            compilation = obfuscator.ObfuscatePInvokeCalls(compilation);
+            compilation = obfuscator.HideLongStringLiteralsInResource(compilation);
+            compilation = obfuscator.ObfuscateStringConstants(compilation);
+            compilation = obfuscator.ObfuscateNamespaces(compilation);
+            compilation = obfuscator.ObfuscateIdentifiers(compilation);
+
+            List<string> syntaxTreeStrings = compilation.SyntaxTrees.Select(tree => tree.ToString()).ToList();
+
+            bool instanceStringStillExists = syntaxTreeStrings.Any(treeString => treeString.Contains("Instance"));
+            Assert.IsFalse(instanceStringStillExists);
+        }
+
         [TestCase(ExpectedResult = 1)]
         public async Task<int> LoadSolutionTest()
         {
@@ -102,10 +123,13 @@ namespace ObfuscatorUnitTests.Tests
             var versions = syntaxTrees.Select(tree => ((CSharpParseOptions) tree.Options).LanguageVersion).ToList();
             
             SourceObfuscator obfuscator = new SourceObfuscator();
+            compilation = obfuscator.ObfuscatePInvokeCalls(compilation);
             compilation = obfuscator.HideLongStringLiteralsInResource(compilation);
             compilation = obfuscator.ObfuscateStringConstants(compilation);
             compilation = obfuscator.ObfuscateNamespaces(compilation);
             compilation = obfuscator.ObfuscateIdentifiers(compilation);
+
+            List<string> syntaxTreeStrings = compilation.SyntaxTrees.Select(tree => tree.ToString()).ToList();
 
             string outputPath = TestHelpers.AssemblyDirectory + Path.DirectorySeparatorChar + "SecretKatz.exe";
             return obfuscator.EmitAssembly(compilation, outputPath); ;

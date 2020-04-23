@@ -16,6 +16,10 @@ namespace RoslynObfuscator
         public byte[] Data;
     }
 
+    /// <summary>
+    /// Code for creating a ResX file and loading it back into memory.
+    /// Adapted from code @ https://github.com/dotnet/roslyn/issues/7791
+    /// </summary>
     public static class ResourceFileHelper
     {
         public static string CreateResXFromEmbeddedResourceData(List<EmbeddedResourceData> embeddedData)

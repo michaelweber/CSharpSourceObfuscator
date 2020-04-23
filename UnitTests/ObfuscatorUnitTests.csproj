@@ -28,6 +28,9 @@
     <Compile Update="Tests\TestCases\AggressiveRenamingTestCase.cs">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Compile>
+    <Compile Update="Tests\TestCases\ExternRefactoringTestCase.cs">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Compile>
     <Compile Update="Tests\TestCases\LongBadStringTestCase.cs">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Compile>
@@ -35,6 +38,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Compile>
     <Compile Update="Tests\TestCases\MultiFileTest2.cs">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Compile>
+    <Compile Update="Tests\TestCases\PInvokeSimpleTestCase.cs">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Compile>
     <Compile Update="Tests\TestCases\UsingReplaceTestCase.cs">

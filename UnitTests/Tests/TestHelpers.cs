@@ -145,6 +145,23 @@ namespace ObfuscatorUnitTests.Tests.TestCases
             return compilation;
         }
 
+        public static Compilation GetPinvokeSimpleTestCompilation()
+        {
+            string path = AssemblyDirectory + TestPath + "PInvokeSimpleTestCase.cs";
+            string programText = File.ReadAllText(path);
+            SyntaxTree tree = CSharpSyntaxTree.ParseText(programText);
+
+            Assembly[] assemblies = GetAssemblyArray();
+
+            var compilation = CSharpCompilation.Create("pinvokeSimpleTestCase");
+
+            compilation = assemblies.Aggregate(compilation, (current, assembly) => current.AddReferences(MetadataReference.CreateFromFile(assembly.Location)));
+
+            compilation = compilation.AddSyntaxTrees(tree);
+
+            return compilation;
+        }
+
         public static Image GetStegoImage()
         {
             string path = AssemblyDirectory + ImagePath + "vtenterprise.bmp";

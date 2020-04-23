@@ -4,9 +4,6 @@ using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.InteropServices;
-using Microsoft.CodeAnalysis.Host.Mef;
-using Microsoft.CodeAnalysis.VisualBasic.Syntax;
-using NUnit.Framework;
 
 namespace RoslynObfuscator.Obfuscation.InjectedClasses
 {
@@ -43,18 +40,6 @@ namespace RoslynObfuscator.Obfuscation.InjectedClasses
             _cachedPInvokeTypes = new Dictionary<string, Type>();
         }
 
-        // [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        // private static extern IntPtr LoadLibrary(string lpFileName);
-        //
-        // [DllImport("kernel32.dll", CharSet = CharSet.Ansi, ExactSpelling = true, SetLastError = true)]
-        // private static extern IntPtr GetProcAddress(IntPtr hModule, string procName);
-
-        /**
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        public static extern IntPtr MessageBox(int hWnd, String text,
-            String caption, uint type);
-        **/
-        
         private Type GetTypeFromString(string typeString)
         {
             if (typeString.Equals("IntPtr")) return typeof(IntPtr);
@@ -88,7 +73,6 @@ namespace RoslynObfuscator.Obfuscation.InjectedClasses
 
         private Type BuildPInvokeFromMetadata(string functionName, string library, Type returnType, Type[] paramTypes, string[] argsMetadata)
         {
-            
             var typeBuilder = _module.DefineType(functionName + "Class", TypeAttributes.Class | TypeAttributes.Public);
 
             var dllImportCtor = typeof(DllImportAttribute).GetConstructor(new Type[] { typeof(string) });
