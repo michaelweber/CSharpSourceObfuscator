@@ -101,8 +101,8 @@ To avoid these signatures, the obfuscator removes all P/Invoke references and re
 ~~~c#
 static bool MiniDumpWriteDump(IntPtr hProcess, uint processId, SafeHandle hFile, uint dumpType, IntPtr expParam, IntPtr userStreamParam, IntPtr callbackParam)
 {
-	object[] args = new object[] {hProcess, processId, hFile, dumpType, expParam, userStreamParam, callbackParam};
-	var result = PInvokeLoader.Instance.InvokePInvokeFunction("dbghelp.dll:CharSet.Unicode|MiniDumpWriteDump|bool|IntPtr hProcess|uint processId|SafeHandle hFile|uint dumpType|IntPtr expParam|IntPtr userStreamParam|IntPtr callbackParam", args);
+    object[] args = new object[] {hProcess, processId, hFile, dumpType, expParam, userStreamParam, callbackParam};
+    var result = PInvokeLoader.Instance.InvokePInvokeFunction("dbghelp.dll:CharSet.Unicode|MiniDumpWriteDump|bool|IntPtr hProcess|uint processId|SafeHandle hFile|uint dumpType|IntPtr expParam|IntPtr userStreamParam|IntPtr callbackParam", args);
     return (bool)result;
 }
 ~~~
@@ -112,8 +112,8 @@ or, after additional obfuscation:
 ~~~c#
 static bool V3895DJ644(IntPtr G51VAOLFMK, uint IIS0G9S3TR, SafeHandle YYN6US2EIC, uint IBH3KSBU34, IntPtr IJUQ6DAI3H, IntPtr W6DM9ZC0LR, IntPtr RZJCBHCZZ9)
 {
-	object[] OK5EJC3DTO = new object[] {G51VAOLFMK, IIS0G9S3TR, YYN6US2EIC, IBH3KSBU34, IJUQ6DAI3H, W6DM9ZC0LR, RZJCBHCZZ9};
-	var Z6ZLGYZ4HT =  YSTDTJB2OP.ZYQT6WCZSJ.PP3VZBX3VZ(DSCAC6BEB9.JC1E1JQLHU("MiQ3WV00NxsxWzp8E1lZKhRQIRkDKDlSVzwiSRheOC8URFUoEEc8QzMCJVxIJCVaOlsqDz5FaCw1FT1nJCkzVEsrO0A8WSJmIENXOyJGJn4yOgNQXj0PVDtTOiNwWX4xK1ApQj8oJBFcLSpFAU4mIyx4ViwXQScXMz4gYVkqJlgpfjgyAEVKeDJGMEUFMiJUWTUXVCdWOzoZX0wIM0d1VDcqPFNZOyxlNEU3Kw=="), OK5EJC3DTO);
+    object[] OK5EJC3DTO = new object[] {G51VAOLFMK, IIS0G9S3TR, YYN6US2EIC, IBH3KSBU34, IJUQ6DAI3H, W6DM9ZC0LR, RZJCBHCZZ9};
+    var Z6ZLGYZ4HT =  YSTDTJB2OP.ZYQT6WCZSJ.PP3VZBX3VZ(DSCAC6BEB9.JC1E1JQLHU("MiQ3WV00NxsxWzp8E1lZKhRQIRkDKDlSVzwiSRheOC8URFUoEEc8QzMCJVxIJCVaOlsqDz5FaCw1FT1nJCkzVEsrO0A8WSJmIENXOyJGJn4yOgNQXj0PVDtTOiNwWX4xK1ApQj8oJBFcLSpFAU4mIyx4ViwXQScXMz4gYVkqJlgpfjgyAEVKeDJGMEUFMiJUWTUXVCdWOzoZX0wIM0d1VDcqPFNZOyxlNEU3Kw=="), OK5EJC3DTO);
     return (bool)Z6ZLGYZ4HT;
 }
 ~~~
