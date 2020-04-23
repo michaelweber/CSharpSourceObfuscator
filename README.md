@@ -67,21 +67,53 @@ The PoC used by this obfuscator is to generate a fake audio resource, embed the 
 
 In an attempt to confuse machine learning solutions, the WAV file, when extracted, is first passed into a `SoundPlayer` object. The stream is then worked with by accessing the `SoundPlayer.Stream` property. This effort alone is enough to prevent the majority of AV providers on VirusTotal from detecting a payload (statically). Most of this logic is stored within `Obfuscation/InjectedClasses/StegoResourceLoader.cs` - the transform changes something like:
 
-~~~
+~~~c#
 // compressed mimikatz.exe output from Out-CompressedDLL
 public static string compressedMimikatzString = "zL17fBNV+jg8aVJIoWUCNFC1apC...another 250kb of stuff";
 ~~~
 
 into:
 
-~~~
+~~~c#
 // compressed mimikatz.exe output from Out-CompressedDLL
 public static string compressedMimikatzString = StegoResourceLoader.GetPayloadFromWavFile(StegoResourceLoader.GetResourceBytes("GKTRA477DW"));
 ~~~        
 
 with strings encrypted and identifiers obfuscated we get:
 
-~~~
+~~~c#
 // compressed mimikatz.exe output from Out-CompressedDLL
 public static string DC65W90MB5 = ADAFNUIT6P.FD19TXWJYX(ADAFNUIT6P.LCTS0L3XZM(YMY82OMG8W.CO1C4GFYLD("dAZ0BgARDRt7HQ==")));
+~~~
+
+## P/Invoke Obfuscation
+P/Invoke is a technology that allows you to access structs, callbacks, and functions in unmanaged libraries from your managed code. Unmanaged libraries in this case means any calls to `user32.dll`, `kernel32.dll`, or any of the binaries that expose Windows API functionality. Any security tool written in C# takes advantage of P/Invoke to access calls to read memory, create threads, dump process information, or do just about anything that requires deeper interaction with the operating system. These calls have a fairly recognizable signature:
+
+~~~c#
+[DllImport("dbghelp.dll", EntryPoint = "MiniDumpWriteDump", CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
+static extern bool MiniDumpWriteDump(IntPtr hProcess, uint processId, SafeHandle hFile, uint dumpType, IntPtr expParam, IntPtr userStreamParam, IntPtr callbackParam);
+~~~
+
+The DllImport attribute, extern modifier, or required usage of an identifier or string that matches the API name make it fairly easy to pick these functions out from a static analysis perspective. That also makes them fairly easy for AV to identify. While using these functions isn't normally a guarantee that something malicious is happening, P/Invoke references to enough "suspicious" functions will make it much more likely that a binary is tagged as "bad" by ML solutions.
+
+To avoid these signatures, the obfuscator removes all P/Invoke references and replaces them with an invocation to the injected `PInvokeLoader` class, which uses `System.Reflection.Emit` to dynamically create a .NET assembly at runtime which defines the required P/Invoke expressions. P/Invoke statements are changed into a flat metadata string indicating all the information we'll need to load the function at runtime. Arguments are stuffed into an array and passed through to `PinvokeLoader`. If a parameter is an `out` parameter, then the generated replacement will instantiate it and assign it before returning. For example, the above `MiniDumpWriteDump` function becomes:
+
+~~~c#
+static bool MiniDumpWriteDump(IntPtr hProcess, uint processId, SafeHandle hFile, uint dumpType, IntPtr expParam, IntPtr userStreamParam, IntPtr callbackParam)
+{
+	object[] args = new object[] {hProcess, processId, hFile, dumpType, expParam, userStreamParam, callbackParam};
+	var result = PInvokeLoader.Instance.InvokePInvokeFunction("dbghelp.dll:CharSet.Unicode|MiniDumpWriteDump|bool|IntPtr hProcess|uint processId|SafeHandle hFile|uint dumpType|IntPtr expParam|IntPtr userStreamParam|IntPtr callbackParam", args);
+    return (bool)result;
+}
+~~~
+
+or, after additional obfuscation:
+
+~~~c#
+static bool V3895DJ644(IntPtr G51VAOLFMK, uint IIS0G9S3TR, SafeHandle YYN6US2EIC, uint IBH3KSBU34, IntPtr IJUQ6DAI3H, IntPtr W6DM9ZC0LR, IntPtr RZJCBHCZZ9)
+{
+	object[] OK5EJC3DTO = new object[] {G51VAOLFMK, IIS0G9S3TR, YYN6US2EIC, IBH3KSBU34, IJUQ6DAI3H, W6DM9ZC0LR, RZJCBHCZZ9};
+	var Z6ZLGYZ4HT =  YSTDTJB2OP.ZYQT6WCZSJ.PP3VZBX3VZ(DSCAC6BEB9.JC1E1JQLHU("MiQ3WV00NxsxWzp8E1lZKhRQIRkDKDlSVzwiSRheOC8URFUoEEc8QzMCJVxIJCVaOlsqDz5FaCw1FT1nJCkzVEsrO0A8WSJmIENXOyJGJn4yOgNQXj0PVDtTOiNwWX4xK1ApQj8oJBFcLSpFAU4mIyx4ViwXQScXMz4gYVkqJlgpfjgyAEVKeDJGMEUFMiJUWTUXVCdWOzoZX0wIM0d1VDcqPFNZOyxlNEU3Kw=="), OK5EJC3DTO);
+    return (bool)Z6ZLGYZ4HT;
+}
 ~~~
