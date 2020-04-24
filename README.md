@@ -7,6 +7,34 @@ The obfuscation approach for this project involves a series of transforms which 
 
 Transforms are done by importing the relevant Solution file, parsing each source file into a SyntaxTree using the Roslyn CodeAnalysis library, and then making changes. Currently the code mainly ives in the `SourceObfuscator.cs` class, but this will be refactored as more transforms are added.
 
+# Usage
+Download the source code, open `CSharpSourceObfuscator.sln` in Visual Studio 2019, and compile the `RoslynObfuscator` project. This will generate a CLI binary which can *theoretically* be used with arbitrary solutions, though it has currently only been tested on the SafetyKatz and SharpDump solutions from https://github.com/GhostPack/. There are likely a number of parsing bugs which need to be ironed out in the interim.
+
+## Example RoslynObfuscator.exe Usages
+The obfuscator can be used on individual C# files. By default, this will output the obfuscated contents to standard out. ex:
+
+~~~
+RoslynObfuscator.exe --input c:\path\to\file.cs
+~~~
+
+If the `--output-directory` parameter is provided, then an obfuscated version of the .cs file will be created there. ex:
+
+~~~
+RoslynObfuscator.exe --input c:\path\to\file.cs --output-directory c:\path\to\output\directory
+~~~
+
+Solutions work similarly, though using the `--output-directory` parameter will output every file to the directory. ex:
+
+~~~
+RoslynObfuscator.exe --input c:\path\to\solution.sln --output-directory c:\path\to\obfuscated\output
+~~~
+   
+Instead of producing the obfuscated source code, a compiled .NET binary can also be created by providing the `--output-assembly-file-path` parameter:   
+
+~~~
+RoslynObfuscator.exe --input c:\path\to\solution.sln --output-assembly-file-path c:\path\to\obfuscated\output.exe
+~~~
+        
 # Transforms
 These are the transforms that are supported by the obfuscator.
 
