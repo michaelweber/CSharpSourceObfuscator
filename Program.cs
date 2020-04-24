@@ -54,14 +54,27 @@ namespace RoslynObfuscator
             return assemblies;
         }
 
+        /// <summary>
+        /// A command line tool to obfuscate C# projects for antivirus evasion.
+        /// </summary>
+        /// <param name="input">The input .cs or .sln file to obfuscate. Only .sln files can be compiled to assemblies.</param>
+        /// <param name="outputDirectory">A directory to output each obfuscated .cs file</param>
+        /// <param name="outputAssemblyFilePath">The full filename path where the compiled obfuscated solution should be emitted</param>
+        /// <returns></returns>
         static int Main(FileInfo input, FileInfo outputDirectory, FileInfo outputAssemblyFilePath)
         {
+            if (input == null || input.Exists == false)
+            {
+                Console.WriteLine("--input argument must point to a valid .sln or .cs file. -? for usage instructions.");
+                return 1;
+            }
+
             bool inputIsSolution = input.Extension.Equals(".sln");
             bool inputIsCSFile = input.Extension.Equals(".cs");
 
             if (inputIsSolution && outputDirectory == null && outputAssemblyFilePath == null)
             {
-                Console.WriteLine("Solution Files must provide either an outputAssemblyFilePath or outputDirectory argument");
+                Console.WriteLine("Solution Files must provide either an --output-assembly-file-path or --output-directory argument");
                 return 1;
             }
 
