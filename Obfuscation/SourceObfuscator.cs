@@ -692,7 +692,8 @@ namespace RoslynObfuscator.Obfuscation
 
                 string codeReplacement = string.Format(pinvokeReplaceFormatString, modifiers.TrimEnd(), returnTypeString,
                     functionName, paramString, preInvokeInitializations, paramsAsArgString, metadataString, postInvokeAssignments, returnStatement);
-
+                
+               
                 changes.Add(new TextChange(pinvokeNode.Span, codeReplacement));
             }
 
@@ -707,27 +708,72 @@ namespace RoslynObfuscator.Obfuscation
             return newTree;
         }
 
+        private SyntaxTree ObfuscateTree(SyntaxTree tree, ref Compilation compilation, ObfuscationType obfuscationType)
+        {
+            SyntaxTree oldTree = tree;
+            switch (obfuscationType)
+            {
+                case ObfuscationType.NamespaceObfuscation:
+                    tree = ObfuscateNamespaces(tree);
+                    break;
+                case ObfuscationType.PInvokeObfuscation:
+                    tree = ObfuscatePInvokeCalls(tree);
+                    break;
+                case ObfuscationType.EmbeddedResourceObfuscation:
+                    tree = HideLongStringLiteralsInResource(tree);
+                    break;
+                case ObfuscationType.TypeReflectionObfuscation:
+                    tree = ObfuscateTypeReferences(tree, compilation, new List<Type> {typeof(GZipStream)});
+                    break;
+                case ObfuscationType.StringEncryption:
+                    tree = ObfuscateStringConstants(tree);
+                    break;
+                case ObfuscationType.IdentifierObfuscation:
+                    tree = ObfuscateIdentifiers(tree, compilation);
+                    break;
+                default:
+                    throw new NotImplementedException();
+            }
+
+            compilation = compilation.ReplaceSyntaxTree(oldTree, tree);
+            return tree;
+        }
+
         public SyntaxTree Obfuscate(SyntaxTree syntaxTree, Compilation compilation)
         {
-            SourceText stage1, stage2, stage3;
+            syntaxTree = ObfuscateTree(syntaxTree, ref compilation, ObfuscationType.PInvokeObfuscation);
+            syntaxTree = ObfuscateTree(syntaxTree, ref compilation, ObfuscationType.TypeReflectionObfuscation);
+            syntaxTree = ObfuscateTree(syntaxTree, ref compilation, ObfuscationType.EmbeddedResourceObfuscation);
+            syntaxTree = ObfuscateTree(syntaxTree, ref compilation, ObfuscationType.StringEncryption);
+            syntaxTree = ObfuscateTree(syntaxTree, ref compilation, ObfuscationType.NamespaceObfuscation);
+            syntaxTree = ObfuscateTree(syntaxTree, ref compilation, ObfuscationType.IdentifierObfuscation);
 
-            SyntaxTree oldTree = syntaxTree;
-            syntaxTree = ObfuscateTypeReferences(syntaxTree,  compilation, new List<Type>() {typeof(GZipStream)});
-            compilation = compilation.ReplaceSyntaxTree(oldTree, syntaxTree);
-
-            oldTree = syntaxTree;
-            syntaxTree = ObfuscateStringConstants(syntaxTree);
-            compilation = compilation.ReplaceSyntaxTree(oldTree, syntaxTree);
-
-            oldTree = syntaxTree;
-            syntaxTree = ObfuscateNamespaces(syntaxTree);
-            compilation = compilation.ReplaceSyntaxTree(oldTree, syntaxTree);
-
-            oldTree = syntaxTree;
-            syntaxTree = ObfuscateIdentifiers(syntaxTree, compilation);
-            compilation = compilation.ReplaceSyntaxTree(oldTree, syntaxTree);
+            // SyntaxTree oldTree = syntaxTree;
+            // syntaxTree = ObfuscateTypeReferences(syntaxTree,  compilation, new List<Type>() {typeof(GZipStream)});
+            // compilation = compilation.ReplaceSyntaxTree(oldTree, syntaxTree);
+            //
+            // oldTree = syntaxTree;
+            // syntaxTree = ObfuscateStringConstants(syntaxTree);
+            // compilation = compilation.ReplaceSyntaxTree(oldTree, syntaxTree);
+            //
+            // oldTree = syntaxTree;
+            // syntaxTree = ObfuscateNamespaces(syntaxTree);
+            // compilation = compilation.ReplaceSyntaxTree(oldTree, syntaxTree);
+            //
+            // oldTree = syntaxTree;
+            // syntaxTree = ObfuscateIdentifiers(syntaxTree, compilation);
 
             return syntaxTree;
+        }
+
+        public Compilation Obfuscate(Compilation compilation)
+        {
+            compilation = ObfuscatePInvokeCalls(compilation);
+            compilation = HideLongStringLiteralsInResource(compilation);
+            compilation = ObfuscateStringConstants(compilation);
+            compilation = ObfuscateNamespaces(compilation);
+            compilation = ObfuscateIdentifiers(compilation);
+            return compilation;
         }
 
         public bool EmitAssembly(Compilation compilation, string filePath)
@@ -751,7 +797,7 @@ namespace RoslynObfuscator.Obfuscation
             foreach (SyntaxTree tree in compilation.SyntaxTrees)
             {
                 string treeString = tree.ToString();
-                Console.WriteLine(treeString);
+                // Console.WriteLine(treeString);
             }
 
             //For now we output 64 bit binaries

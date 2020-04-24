@@ -105,7 +105,6 @@ namespace RoslynObfuscator.Obfuscation.InjectedClasses
                 parameterTypes: updatedParameters.ToArray(),
                 nativeCallConv: CallingConvention.Winapi,
                 nativeCharSet: charSet);
-
             /*
              //Might be needed for MarshalAs PInvoke expressions
             for (int parameterIndex = 1; parameterIndex <= argsMetadata.Length; parameterIndex += 1)

@@ -123,11 +123,13 @@ namespace ObfuscatorUnitTests.Tests
             var versions = syntaxTrees.Select(tree => ((CSharpParseOptions) tree.Options).LanguageVersion).ToList();
             
             SourceObfuscator obfuscator = new SourceObfuscator();
-            compilation = obfuscator.ObfuscatePInvokeCalls(compilation);
-            compilation = obfuscator.HideLongStringLiteralsInResource(compilation);
-            compilation = obfuscator.ObfuscateStringConstants(compilation);
-            compilation = obfuscator.ObfuscateNamespaces(compilation);
-            compilation = obfuscator.ObfuscateIdentifiers(compilation);
+            // compilation = obfuscator.ObfuscatePInvokeCalls(compilation);
+            // compilation = obfuscator.HideLongStringLiteralsInResource(compilation);
+            // compilation = obfuscator.ObfuscateStringConstants(compilation);
+            // compilation = obfuscator.ObfuscateNamespaces(compilation);
+            // compilation = obfuscator.ObfuscateIdentifiers(compilation);
+
+            compilation = obfuscator.Obfuscate(compilation);
 
             List<string> syntaxTreeStrings = compilation.SyntaxTrees.Select(tree => tree.ToString()).ToList();
 
