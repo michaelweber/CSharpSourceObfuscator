@@ -5,7 +5,7 @@ The goal of this project is to create a tool which, when provided with a path to
 
 The obfuscation approach for this project involves a series of transforms which we can apply in order to reduce detection rates and break signatures. Many of these transforms involve injecting additional functionality into the output binary. For example, if we encrypt every string, we'll need to also inject string decryption logic so that the strings are usable at runtime. Injected classes/functionality can be found in the `Obfuscation/InjectedClasses` folder.
 
-Transforms are done by importing the relevant Solution file, parsing each source file into a SyntaxTree using the Roslyn CodeAnalysis library, and then making changes. Currently the code mainly ives in the `SourceObfuscator.cs` class, but this will be refactored as more transforms are added.
+Transforms are done by importing the relevant Solution file, parsing each source file into a SyntaxTree using the Roslyn CodeAnalysis library, and then making changes. Currently the code mainly lives in the `SourceObfuscator.cs` class, but this will be refactored as more transforms are added.
 
 # Usage
 Download the source code, open `CSharpSourceObfuscator.sln` in Visual Studio 2019, and compile the `RoslynObfuscator` project. This will generate a CLI binary which can *theoretically* be used with arbitrary solutions, though it has currently only been tested on the SafetyKatz and SharpDump solutions from https://github.com/GhostPack/. There are likely a number of parsing bugs which need to be ironed out in the interim.
