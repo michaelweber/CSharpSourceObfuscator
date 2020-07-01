@@ -60,8 +60,9 @@ namespace RoslynObfuscator
         /// <param name="input">The input .cs or .sln file to obfuscate. Only .sln files can be compiled to assemblies.</param>
         /// <param name="outputDirectory">A directory to output each obfuscated .cs file</param>
         /// <param name="outputAssemblyFilePath">The full filename path where the compiled obfuscated solution should be emitted</param>
+        /// <param name="ObfuscationWordList"> wordlist to use to obfuscate binary instead of default alphabet</param>
         /// <returns></returns>
-        static int Main(FileInfo input, FileInfo outputDirectory, FileInfo outputAssemblyFilePath)
+        static int Main(FileInfo input, FileInfo outputDirectory, FileInfo outputAssemblyFilePath, string ObfuscationWordList)
         {
             if (input == null || input.Exists == false)
             {
@@ -89,9 +90,14 @@ namespace RoslynObfuscator
                 Console.WriteLine("File {0} does not exist.", input.FullName);
                 return 1;
             }
-
-            SourceObfuscator obfuscator = new SourceObfuscator();
-
+            SourceObfuscator obfuscator = new SourceObfuscator() ; 
+            if (ObfuscationWordList != null)
+            {
+                //Wordlist helped against heuristics/ML sometimes
+                Console.WriteLine("Using wordlist {0}", ObfuscationWordList);
+                PolymorphicCodeOptions options = new PolymorphicCodeOptions(RandomStringMethod.StringFromWordlistFile, 10, 20, "notused", ObfuscationWordList);
+                obfuscator = new SourceObfuscator(options);
+            }
             //If we're given a single file
             if (input.Extension.Equals(".cs"))
             {
