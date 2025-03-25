@@ -49,6 +49,7 @@ namespace RoslynObfuscator.Obfuscation
     {
         private static Random random = new Random();
         private static List<string> words = new List<string>();
+        private static HashSet<string> usedWords = new HashSet<string>();
 
         public static string GetRandomIdentifier()
         {
@@ -57,9 +58,7 @@ namespace RoslynObfuscator.Obfuscation
 
         public static string GetRandomIdentifier(PolymorphicCodeOptions options)
         {
-
             string randomIdentifier;
-
 
             for (int attempt = 0; attempt < 100; attempt += 1)
             {
@@ -75,15 +74,18 @@ namespace RoslynObfuscator.Obfuscation
                         throw new ArgumentException("RandomStringMethod {0} is Not Supported", options.RandomStringMethod.ToString());
                 }
 
-                //Make sure we're generating a valid identifier
-                if (Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(randomIdentifier))
+                //Make sure we're generating a valid identifier and it hasn't been used before
+                if (Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(randomIdentifier) && !usedWords.Contains(randomIdentifier))
                 {
+                    usedWords.Add(randomIdentifier);
                     return randomIdentifier;
                 }
             }
 
-
-            throw new ArgumentException("Dictionary provided did not generate a valid identifier after 100 attempts.");
+            // If we've exhausted attempts with wordlist, fall back to dictionary method
+            randomIdentifier = BuildRandomStringFromDictionary(options);
+            usedWords.Add(randomIdentifier);
+            return randomIdentifier;
         }
 
         public static string GetRandomString()
@@ -153,25 +155,49 @@ namespace RoslynObfuscator.Obfuscation
             {
                 BuildRandomStringFromDictionaryFile(options);
             }
-            int length = random.Next(options.MinimumRandomStringLength, options.MaximumRandomStringLength);
 
-            int index = genRandom(words.Count);
+            // Get available words (not yet used)
+            var availableWords = words.Where(w => !usedWords.Contains(w)).ToList();
+            if (availableWords.Count < 2)
+            {
+                // If we're running out of words, fall back to dictionary method
+                return BuildRandomStringFromDictionary(options);
+            }
+
+            int length = random.Next(options.MinimumRandomStringLength, options.MaximumRandomStringLength);
             string ret = "";
 
-            if (index % 3 == 0)
+            if (random.Next(3) == 0) // Changed from index % 3 to make it more random
             {
-                ret += words[index];
-                index = genRandom(words.Count);
-                ret += "_" + words[index];
-                index = genRandom(words.Count);
-                ret += "_" + words[index];
+                // Get three unique words
+                var selectedWords = new List<string>();
+                for (int i = 0; i < 3; i++)
+                {
+                    var remainingWords = availableWords.Where(w => !selectedWords.Contains(w)).ToList();
+                    if (remainingWords.Count == 0) break;
+                    
+                    int index = genRandom(remainingWords.Count);
+                    selectedWords.Add(remainingWords[index]);
+                }
+
+                ret = string.Join("_", selectedWords);
             }
             else
             {
-                ret += words[index];
-                index = genRandom(words.Count);
-                ret += words[index];
+                // Get two unique words
+                var selectedWords = new List<string>();
+                for (int i = 0; i < 2; i++)
+                {
+                    var remainingWords = availableWords.Where(w => !selectedWords.Contains(w)).ToList();
+                    if (remainingWords.Count == 0) break;
+                    
+                    int index = genRandom(remainingWords.Count);
+                    selectedWords.Add(remainingWords[index]);
+                }
+
+                ret = string.Join("", selectedWords);
             }
+
             return ret;
         }
         private static void BuildRandomStringFromDictionaryFile(PolymorphicCodeOptions options)

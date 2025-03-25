@@ -18,46 +18,23 @@ namespace RoslynObfuscator.Obfuscation.InjectedClasses
     }
     public static class InjectedClassHelper
     {
-
-        public static string AssemblyDirectory
-        {
-            get
-            {
-                string codeBase = Assembly.GetExecutingAssembly().CodeBase;
-                UriBuilder uri = new UriBuilder(codeBase);
-                string path = Uri.UnescapeDataString(uri.Path);
-                return Path.GetDirectoryName(path);
-            }
-        }
-
         public static string GetInjectableClassSourceText(InjectableClasses injectableClass)
         {
-            string curDirectory = AssemblyDirectory;
-            string pathToRead = curDirectory + Path.DirectorySeparatorChar + 
-                                "Obfuscation" + Path.DirectorySeparatorChar +
-                                "InjectedClasses" + Path.DirectorySeparatorChar;
-            switch (injectableClass)
-            {
-                case InjectableClasses.IndirectObjectLoader:
-                    pathToRead += "IndirectObjectLoader.cs";
-                    break;
-                case InjectableClasses.StringEncryptor:
-                    pathToRead += "StringEncryptor.cs";
-                    break;
-                case InjectableClasses.StegoResourceLoader:
-                    pathToRead += "StegoResourceLoader.cs";
-                    break;
-                case InjectableClasses.Properties:
-                    pathToRead += "Properties.cs";
-                    break;
-                case InjectableClasses.PInvokeLoader:
-                    pathToRead += "PInvokeLoader.cs";
-                    break;
-                default:
-                    throw new ArgumentException("Unknown Injectable Class Path to Fetch");
-            }
+            string resourceName = $"RoslynObfuscator.Obfuscation.InjectedClasses.{injectableClass}.cs";
+            var assembly = Assembly.GetExecutingAssembly();
 
-            return File.ReadAllText(pathToRead);
+            using (var stream = assembly.GetManifestResourceStream(resourceName))
+            {
+                if (stream == null)
+                {
+                    throw new InvalidOperationException($"Could not find embedded resource: {resourceName}");
+                }
+
+                using (var reader = new StreamReader(stream))
+                {
+                    return reader.ReadToEnd();
+                }
+            }
         }
     }
 }

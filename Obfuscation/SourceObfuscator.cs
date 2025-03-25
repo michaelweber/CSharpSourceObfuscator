@@ -491,7 +491,7 @@ namespace RoslynObfuscator.Obfuscation
                     // newTree = ObfuscateNamespaces(newTree);
                     compilation = compilation.ReplaceSyntaxTree(oldTree, newTree);
                 }
-                catch (ArgumentException arg)
+                catch (ArgumentException)
                 {
                     changes = changes.OrderBy(s => s.Span.Start).ToList();
                     List<TextChange> overlaps = changes.Where(c =>
@@ -509,85 +509,47 @@ namespace RoslynObfuscator.Obfuscation
         public SyntaxTree ObfuscateIdentifiers(SyntaxTree tree, Compilation compilation)
         {
             SyntaxTree returnTree = tree;
-            List<SyntaxToken> userIdentifiers = CodeIntrospectionHelper.GetDeclarationIdentifiersFromTree(tree);
-            List<TextChange> changes = ObfuscateIdentifiers(tree, compilation, userIdentifiers);
+            
+            // First, find and remove const/readonly modifiers from fields that will be obfuscated
+            var root = returnTree.GetRoot();
+            var fieldDeclarations = root.DescendantNodes()
+                .OfType<FieldDeclarationSyntax>()
+                .Where(field => field.Modifiers.Any(m => m.IsKind(SyntaxKind.ConstKeyword) || m.IsKind(SyntaxKind.ReadOnlyKeyword)))
+                .ToList();
+
+            List<TextChange> modifierChanges = new List<TextChange>();
+            foreach (var field in fieldDeclarations)
+            {
+                // Check if the field's initializer contains a method call or non-constant expression
+                bool hasNonConstantInitializer = field.Declaration.Variables
+                    .Any(v => v.Initializer != null && 
+                        (v.Initializer.Value is InvocationExpressionSyntax || 
+                         v.Initializer.Value is MemberAccessExpressionSyntax));
+
+                if (hasNonConstantInitializer)
+                {
+                    // Remove const and readonly modifiers
+                    var newModifiers = field.Modifiers
+                        .Where(m => !m.IsKind(SyntaxKind.ConstKeyword) && !m.IsKind(SyntaxKind.ReadOnlyKeyword))
+                        .ToList();
+                    
+                    modifierChanges.Add(new TextChange(field.Modifiers.Span, string.Join(" ", newModifiers)));
+                }
+            }
+
+            if (modifierChanges.Any())
+            {
+                SourceText modifiedText = returnTree.GetText().WithChanges(modifierChanges);
+                returnTree = returnTree.WithChangedText(modifiedText);
+            }
+
+            // Continue with normal identifier obfuscation
+            List<SyntaxToken> userIdentifiers = CodeIntrospectionHelper.GetDeclarationIdentifiersFromTree(returnTree);
+            List<TextChange> changes = ObfuscateIdentifiers(returnTree, compilation, userIdentifiers);
             SourceText changedText = returnTree.GetText().WithChanges(changes);
             returnTree = returnTree.WithChangedText(changedText);
             returnTree = ObfuscateNamespaces(returnTree);
             return returnTree;
-        }
-
-        private List<TextChange> ObfuscateIdentifiers(SyntaxTree tree, Compilation compilation, 
-            List<SyntaxToken> identifiers, bool renameUnseenIdentifiers = true)
-        {
-            SemanticModel model = compilation.GetSemanticModel(tree);
-            List<TextChange> changes = new List<TextChange>();
-            foreach (var identifier in identifiers)
-            {
-                //Don't rename our entry point function
-                if (identifier.Text.Equals("Main") &&
-                    identifier.Parent.IsKind(SyntaxKind.MethodDeclaration))
-                {
-                    continue;
-                }
-
-                //TODO remove this
-                //Debugging section because I'm too lazy to use conditional breakpoints
-                // if (identifier.Text.Equals("Instance"))
-                // {
-                //     string letsDig = "True";
-                // }
-
-                ISymbol symbol = CodeIntrospectionHelper.GetSymbolForToken(model, identifier);
-
-                //Make sure we're only renaming symbols that are from the compilation assembly
-                if (symbol != null)
-                {
-                    string targetAssemblyName = compilation.AssemblyName;
-                    string targetNamespace = ObfuscatedNamespace;
-                    IAssemblySymbol containingAssembly = symbol.ContainingAssembly;
-
-                    //Check if the symbol being modified belongs to a different assembly
-                    if (containingAssembly != null)
-                    {
-                        string assemblyName = containingAssembly.Identity.GetDisplayName();
-                        if (!assemblyName.StartsWith(targetAssemblyName))
-                        {
-                            continue;
-                        }
-                    }
-
-                    if (containingAssembly == null)
-                    {
-                        //Sometimes (such as when the symbol is System), there is no containing assembly
-                        //In that case make sure the namespace matches
-                        string assemblyDisplayName = symbol.ToDisplayString();
-                        if (!assemblyDisplayName.StartsWith(targetNamespace))
-                        {
-                            continue;
-                        }
-                    }
-                }
-
-                IEnumerable<TextSpan> renameSpans = CodeModificationHelper.GetRenameSpans(model, identifier);
-
-                if (renameSpans == null)
-                {
-                    //Happens when we encounter Static classes that aren't defined in projects,
-                    //ex: Encoding.UTF8.GetString - the Encoding identifier matches search critera but
-                    //doesn't match any symbols
-                    continue;
-                }
-
-                renameSpans = renameSpans.OrderBy(s => s);
-                string newName = GetNewNameForTokenAndSymbol(identifier, symbol, renameUnseenIdentifiers);
-
-
-                changes = changes.Concat(renameSpans.Select(s => new TextChange(s, newName))).ToList();
-            }
-
-            changes = changes.Distinct().ToList();
-            return changes;
         }
 
         public SyntaxTree ObfuscateNamespaces(SyntaxTree tree)
@@ -739,6 +701,45 @@ namespace RoslynObfuscator.Obfuscation
             return tree;
         }
 
+        private SyntaxTree RemoveConstAndReadonlyModifiers(SyntaxTree syntaxTree)
+        {
+            var root = syntaxTree.GetRoot();
+            var fieldDeclarations = root.DescendantNodes()
+                .OfType<FieldDeclarationSyntax>()
+                .Where(field => field.Modifiers.Any(m => m.IsKind(SyntaxKind.ConstKeyword) || m.IsKind(SyntaxKind.ReadOnlyKeyword)))
+                .ToList();
+
+            List<TextChange> modifierChanges = new List<TextChange>();
+            foreach (var field in fieldDeclarations)
+            {
+                // Check if the field's initializer contains any method calls or member access
+                bool hasNonConstantInitializer = field.Declaration.Variables
+                    .Any(v => v.Initializer != null && (
+                        v.Initializer.Value.DescendantNodes().Any(n => n is InvocationExpressionSyntax) ||
+                        v.Initializer.Value.DescendantNodes().Any(n => n is MemberAccessExpressionSyntax) ||
+                        v.Initializer.Value is InvocationExpressionSyntax ||
+                        v.Initializer.Value is MemberAccessExpressionSyntax));
+
+                if (hasNonConstantInitializer)
+                {
+                    // Remove const and readonly modifiers but keep other modifiers like static
+                    var newModifiers = field.Modifiers
+                        .Where(m => !m.IsKind(SyntaxKind.ConstKeyword) && !m.IsKind(SyntaxKind.ReadOnlyKeyword))
+                        .ToList();
+                    
+                    modifierChanges.Add(new TextChange(field.Modifiers.Span, string.Join(" ", newModifiers)));
+                }
+            }
+
+            if (modifierChanges.Any())
+            {
+                SourceText modifiedText = syntaxTree.GetText().WithChanges(modifierChanges);
+                return syntaxTree.WithChangedText(modifiedText);
+            }
+
+            return syntaxTree;
+        }
+
         public SyntaxTree Obfuscate(SyntaxTree syntaxTree, Compilation compilation)
         {
             syntaxTree = ObfuscateTree(syntaxTree, ref compilation, ObfuscationType.PInvokeObfuscation);
@@ -748,20 +749,8 @@ namespace RoslynObfuscator.Obfuscation
             syntaxTree = ObfuscateTree(syntaxTree, ref compilation, ObfuscationType.NamespaceObfuscation);
             syntaxTree = ObfuscateTree(syntaxTree, ref compilation, ObfuscationType.IdentifierObfuscation);
 
-            // SyntaxTree oldTree = syntaxTree;
-            // syntaxTree = ObfuscateTypeReferences(syntaxTree,  compilation, new List<Type>() {typeof(GZipStream)});
-            // compilation = compilation.ReplaceSyntaxTree(oldTree, syntaxTree);
-            //
-            // oldTree = syntaxTree;
-            // syntaxTree = ObfuscateStringConstants(syntaxTree);
-            // compilation = compilation.ReplaceSyntaxTree(oldTree, syntaxTree);
-            //
-            // oldTree = syntaxTree;
-            // syntaxTree = ObfuscateNamespaces(syntaxTree);
-            // compilation = compilation.ReplaceSyntaxTree(oldTree, syntaxTree);
-            //
-            // oldTree = syntaxTree;
-            // syntaxTree = ObfuscateIdentifiers(syntaxTree, compilation);
+            // Final pass to remove const/readonly
+            syntaxTree = RemoveConstAndReadonlyModifiers(syntaxTree);
 
             return syntaxTree;
         }
@@ -773,6 +762,19 @@ namespace RoslynObfuscator.Obfuscation
             compilation = ObfuscateStringConstants(compilation);
             compilation = ObfuscateNamespaces(compilation);
             compilation = ObfuscateIdentifiers(compilation);
+
+            // Final pass to remove const/readonly from all trees
+            var trees = compilation.SyntaxTrees.ToList();
+            foreach (var tree in trees)
+            {
+                var oldTree = tree;
+                var newTree = RemoveConstAndReadonlyModifiers(tree);
+                if (oldTree != newTree)
+                {
+                    compilation = compilation.ReplaceSyntaxTree(oldTree, newTree);
+                }
+            }
+
             return compilation;
         }
 
@@ -824,8 +826,70 @@ namespace RoslynObfuscator.Obfuscation
             return true;
         }
 
+        private List<TextChange> ObfuscateIdentifiers(SyntaxTree tree, Compilation compilation, 
+            List<SyntaxToken> identifiers, bool renameUnseenIdentifiers = true)
+        {
+            SemanticModel model = compilation.GetSemanticModel(tree);
+            List<TextChange> changes = new List<TextChange>();
+            foreach (var identifier in identifiers)
+            {
+                //Don't rename our entry point function
+                if (identifier.Text.Equals("Main") &&
+                    identifier.Parent.IsKind(SyntaxKind.MethodDeclaration))
+                {
+                    continue;
+                }
 
+                ISymbol symbol = CodeIntrospectionHelper.GetSymbolForToken(model, identifier);
 
+                //Make sure we're only renaming symbols that are from the compilation assembly
+                if (symbol != null)
+                {
+                    string targetAssemblyName = compilation.AssemblyName;
+                    string targetNamespace = ObfuscatedNamespace;
+                    IAssemblySymbol containingAssembly = symbol.ContainingAssembly;
+
+                    //Check if the symbol being modified belongs to a different assembly
+                    if (containingAssembly != null)
+                    {
+                        string assemblyName = containingAssembly.Identity.GetDisplayName();
+                        if (!assemblyName.StartsWith(targetAssemblyName))
+                        {
+                            continue;
+                        }
+                    }
+
+                    if (containingAssembly == null)
+                    {
+                        //Sometimes (such as when the symbol is System), there is no containing assembly
+                        //In that case make sure the namespace matches
+                        string assemblyDisplayName = symbol.ToDisplayString();
+                        if (!assemblyDisplayName.StartsWith(targetNamespace))
+                        {
+                            continue;
+                        }
+                    }
+                }
+
+                IEnumerable<TextSpan> renameSpans = CodeModificationHelper.GetRenameSpans(model, identifier);
+
+                if (renameSpans == null)
+                {
+                    //Happens when we encounter Static classes that aren't defined in projects,
+                    //ex: Encoding.UTF8.GetString - the Encoding identifier matches search critera but
+                    //doesn't match any symbols
+                    continue;
+                }
+
+                renameSpans = renameSpans.OrderBy(s => s);
+                string newName = GetNewNameForTokenAndSymbol(identifier, symbol, renameUnseenIdentifiers);
+
+                changes = changes.Concat(renameSpans.Select(s => new TextChange(s, newName))).ToList();
+            }
+
+            changes = changes.Distinct().ToList();
+            return changes;
+        }
 
     }
 }

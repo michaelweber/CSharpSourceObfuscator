@@ -80,18 +80,17 @@ namespace RoslynObfuscator.Obfuscation.InjectedClasses
             var dllImportBuilder = new CustomAttributeBuilder(dllImportCtor, new object[] { library });
 
             //Anything we're going to use for a ref/out parameter needs to have the Type converted to a RefType
-            IEnumerable<Type> updatedParameters = new List<Type>();
+            List<Type> updatedParameters = new List<Type>();
             for (int parameterIndex = 1; parameterIndex <= argsMetadata.Length; parameterIndex += 1)
             {
-
                 string argMetadata = argsMetadata[parameterIndex - 1];
                 if (argMetadata.StartsWith("ref ") || argMetadata.StartsWith("out "))
                 {
-                    updatedParameters = updatedParameters.Append(paramTypes[parameterIndex - 1].MakeByRefType());
+                    updatedParameters.Add(paramTypes[parameterIndex - 1].MakeByRefType());
                 }
                 else
                 {
-                    updatedParameters = updatedParameters.Append(paramTypes[parameterIndex - 1]);
+                    updatedParameters.Add(paramTypes[parameterIndex - 1]);
                 }
             }
 

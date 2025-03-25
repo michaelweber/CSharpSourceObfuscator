@@ -18,11 +18,82 @@ using System.CommandLine;
 using System.CommandLine.Invocation;
 using Microsoft.CodeAnalysis.Text;
 using RoslynObfuscator.Obfuscation;
+using System.Collections.Immutable;
+using System.Threading;
 
 namespace RoslynObfuscator
 {
     class Program
     {
+        static Program()
+        {
+            try
+            {
+                // Try to find Visual Studio installation
+                string[] possibleVsVersions = new[] { "2022", "2019", "2017" };
+                string[] possibleVsEditions = new[] { "Enterprise", "Professional", "Community", "BuildTools" };
+                string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+                string msbuildPath = null;
+
+                foreach (var version in possibleVsVersions)
+                {
+                    foreach (var edition in possibleVsEditions)
+                    {
+                        var path = Path.Combine(programFiles, "Microsoft Visual Studio", version, edition, "MSBuild", "Current", "Bin");
+                        if (Directory.Exists(path))
+                        {
+                            msbuildPath = path;
+                            break;
+                        }
+                    }
+                    if (msbuildPath != null) break;
+                }
+
+                if (msbuildPath == null)
+                {
+                    // Try fallback to VS2019 BuildTools specific path
+                    msbuildPath = Path.Combine(programFiles, @"Microsoft Visual Studio\2019\BuildTools\MSBuild\Current\Bin");
+                }
+
+                if (Directory.Exists(msbuildPath))
+                {
+                    Console.WriteLine($"Found MSBuild at: {msbuildPath}");
+                    
+                    // Set environment variables
+                    Environment.SetEnvironmentVariable("MSBUILD_EXE_PATH", Path.Combine(msbuildPath, "MSBuild.exe"));
+                    var currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+                    Environment.SetEnvironmentVariable("PATH", currentPath + ";" + msbuildPath);
+                    
+                    // Set additional MSBuild environment variables
+                    string vsInstallRoot = Path.GetFullPath(Path.Combine(msbuildPath, "..", "..", ".."));
+                    Environment.SetEnvironmentVariable("VSINSTALLDIR", vsInstallRoot);
+                    Environment.SetEnvironmentVariable("VisualStudioVersion", "16.0");
+                    Environment.SetEnvironmentVariable("VSCMD_VER", "16.0");
+                    
+                    // Set .NET Framework path
+                    string frameworkPath = Path.Combine(programFiles, "Reference Assemblies", "Microsoft", "Framework", ".NETFramework");
+                    if (Directory.Exists(frameworkPath))
+                    {
+                        Environment.SetEnvironmentVariable("FrameworkSDKRoot", frameworkPath);
+                    }
+
+                    // Print diagnostic information
+                    Console.WriteLine("Environment Configuration:");
+                    Console.WriteLine($"  MSBUILD_EXE_PATH: {Environment.GetEnvironmentVariable("MSBUILD_EXE_PATH")}");
+                    Console.WriteLine($"  VSINSTALLDIR: {Environment.GetEnvironmentVariable("VSINSTALLDIR")}");
+                    Console.WriteLine($"  FrameworkSDKRoot: {Environment.GetEnvironmentVariable("FrameworkSDKRoot")}");
+                }
+                else
+                {
+                    Console.WriteLine("Warning: Could not find MSBuild installation path");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Could not set MSBuild environment: {ex.Message}");
+            }
+        }
+
         public static string AssemblyDirectory
         {
             get
@@ -57,168 +128,210 @@ namespace RoslynObfuscator
         /// <summary>
         /// A command line tool to obfuscate C# projects for antivirus evasion.
         /// </summary>
-        /// <param name="input">The input .cs or .sln file to obfuscate. Only .sln files can be compiled to assemblies.</param>
+        /// <param name="input">The input .cs, .csproj, or .sln file to obfuscate. Only .csproj and .sln files can be compiled to assemblies.</param>
         /// <param name="outputDirectory">A directory to output each obfuscated .cs file</param>
         /// <param name="outputAssemblyFilePath">The full filename path where the compiled obfuscated solution should be emitted</param>
-        /// <param name="ObfuscationWordList"> wordlist to use to obfuscate binary instead of default alphabet</param>
+        /// <param name="ObfuscationWordList">wordlist to use to obfuscate binary instead of default alphabet</param>
         /// <returns></returns>
         static int Main(FileInfo input, FileInfo outputDirectory, FileInfo outputAssemblyFilePath, string ObfuscationWordList)
         {
-            if (input == null || input.Exists == false)
+            try
             {
-                Console.WriteLine("--input argument must point to a valid .sln or .cs file. -? for usage instructions.");
-                return 1;
-            }
-
-            bool inputIsSolution = input.Extension.Equals(".sln");
-            bool inputIsCSFile = input.Extension.Equals(".cs");
-
-            if (inputIsSolution && outputDirectory == null && outputAssemblyFilePath == null)
-            {
-                Console.WriteLine("Solution Files must provide either an --output-assembly-file-path or --output-directory argument");
-                return 1;
-            }
-
-            if (inputIsCSFile && outputAssemblyFilePath != null)
-            {
-                Console.WriteLine("Cannot emit an assembly for .cs files");
-                return 1;
-            }
-
-            if (input.Exists == false)
-            {
-                Console.WriteLine("File {0} does not exist.", input.FullName);
-                return 1;
-            }
-            SourceObfuscator obfuscator = new SourceObfuscator() ; 
-            if (ObfuscationWordList != null)
-            {
-                //Wordlist helped against heuristics/ML sometimes
-                Console.WriteLine("Using wordlist {0}", ObfuscationWordList);
-                PolymorphicCodeOptions options = new PolymorphicCodeOptions(RandomStringMethod.StringFromWordlistFile, 10, 20, "notused", ObfuscationWordList);
-                obfuscator = new SourceObfuscator(options);
-            }
-            //If we're given a single file
-            if (input.Extension.Equals(".cs"))
-            {
-                Compilation c = CSharpCompilation.Create(input.Name);
-                string fileText = File.ReadAllText(input.FullName);
-                SyntaxTree fileTree = CSharpSyntaxTree.ParseText(fileText);
-
-                c = c.AddSyntaxTrees(fileTree);
-
-                fileTree = obfuscator.Obfuscate(fileTree, c);
-
-                if (outputDirectory != null && outputDirectory.Exists)
+                if (input == null || input.Exists == false)
                 {
-                    File.WriteAllText(outputDirectory.FullName + Path.DirectorySeparatorChar + input.Name, fileTree.ToString());
+                    Console.WriteLine("--input argument must point to a valid .sln, .csproj, or .cs file. -? for usage instructions.");
+                    return 1;
                 }
-                else
+
+                // Normalize the input path
+                string fullPath = Path.GetFullPath(input.FullName);
+                input = new FileInfo(fullPath);
+
+                bool inputIsSolution = input.Extension.Equals(".sln", StringComparison.OrdinalIgnoreCase);
+                bool inputIsCSFile = input.Extension.Equals(".cs", StringComparison.OrdinalIgnoreCase);
+                bool inputIsProject = input.Extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase);
+
+                if ((inputIsSolution || inputIsProject) && outputDirectory == null && outputAssemblyFilePath == null)
                 {
-                    Console.WriteLine(fileTree);
+                    Console.WriteLine("Solution and Project Files must provide either an --output-assembly-file-path or --output-directory argument");
+                    return 1;
                 }
-                return 0;
-            }
-            //If we're given a solution
-            if (input.Extension.Equals(".sln"))
-            {
-                string solutionPath = input.FullName;
 
-                // Attempt to set the version of MSBuild.
-                var visualStudioInstances = MSBuildLocator.QueryVisualStudioInstances().ToArray();
-                var instance = visualStudioInstances.Length == 1
-                    // If there is only one instance of MSBuild on this machine, set that as the one to use.
-                    ? visualStudioInstances[0]
-                    // Handle selecting the version of MSBuild you want to use.
-                    : SelectVisualStudioInstance(visualStudioInstances);
-
-                Console.WriteLine($"Using MSBuild at '{instance.MSBuildPath}' to load projects.");
-
-
-                // NOTE: Be sure to register an instance with the MSBuildLocator 
-                //       before calling MSBuildWorkspace.Create()
-                //       otherwise, MSBuildWorkspace won't MEF compose.
-                MSBuildLocator.RegisterInstance(instance);
-
-                using (var workspace = MSBuildWorkspace.Create())
+                if (inputIsCSFile && outputAssemblyFilePath != null)
                 {
-                    // Print message for WorkspaceFailed event to help diagnosing project load failures.
-                    workspace.WorkspaceFailed += (o, e) => Console.WriteLine(e.Diagnostic.Message);
+                    Console.WriteLine("Cannot emit an assembly for .cs files");
+                    return 1;
+                }
 
-                    Console.WriteLine($"Loading solution '{solutionPath}'");
+                if (input.Exists == false)
+                {
+                    Console.WriteLine("File {0} does not exist.", input.FullName);
+                    return 1;
+                }
 
-                    
-                    // Attach progress reporter so we print projects as they are loaded.
-                    var solution = workspace.OpenSolutionAsync(solutionPath, new ConsoleProgressReporter()).Result;
+                SourceObfuscator obfuscator = new SourceObfuscator();
+                if (ObfuscationWordList != null)
+                {
+                    //Wordlist helped against heuristics/ML sometimes
+                    Console.WriteLine("Using wordlist {0}", ObfuscationWordList);
+                    PolymorphicCodeOptions options = new PolymorphicCodeOptions(RandomStringMethod.StringFromWordlistFile, 10, 20, "notused", ObfuscationWordList);
+                    obfuscator = new SourceObfuscator(options);
+                }
 
-                    Console.WriteLine($"Finished loading solution '{solutionPath}'");
+                //If we're given a single file
+                if (inputIsCSFile)
+                {
+                    Compilation c = CSharpCompilation.Create(input.Name);
+                    string fileText = File.ReadAllText(input.FullName);
+                    SyntaxTree fileTree = CSharpSyntaxTree.ParseText(fileText);
 
-                    string assemblyName = Path.GetFileNameWithoutExtension(input.FullName);
+                    c = c.AddSyntaxTrees(fileTree);
 
+                    fileTree = obfuscator.Obfuscate(fileTree, c);
+
+                    if (outputDirectory != null && outputDirectory.Exists)
+                    {
+                        File.WriteAllText(outputDirectory.FullName + Path.DirectorySeparatorChar + input.Name, fileTree.ToString());
+                    }
+                    else
+                    {
+                        Console.WriteLine(fileTree);
+                    }
+                    return 0;
+                }
+
+                //If we're given a solution or project
+                if (inputIsSolution || inputIsProject)
+                {
+                    string path = input.FullName;
+                    Console.WriteLine($"Processing path: {path}");
+                    Console.WriteLine($"Absolute path: {Path.GetFullPath(path)}");
+
+                    // Read and parse project file
+                    Console.WriteLine("\nProject file contents:");
+                    string projectContent = File.ReadAllText(path);
+                    Console.WriteLine(projectContent);
+
+                    var doc = new System.Xml.XmlDocument();
+                    doc.LoadXml(projectContent);
+
+                    // Get project properties
+                    var assemblyName = Path.GetFileNameWithoutExtension(input.FullName);
                     if (outputAssemblyFilePath != null)
                     {
                         assemblyName = Path.GetFileNameWithoutExtension(outputAssemblyFilePath.FullName);
                     }
 
-                    Compilation compilation = CSharpCompilation.Create(assemblyName);
+                    // Create compilation options
+                    var compilationOptions = new CSharpCompilationOptions(OutputKind.ConsoleApplication)
+                        .WithOptimizationLevel(OptimizationLevel.Release)
+                        .WithPlatform(Platform.X86);
 
-                    //TODO Add in the references from whatever solution is being used
-                    //BUG Fix identifiers from not correctly obtaining static symbols when same assembly is added multiple times
-                    //var solutionReferences = solution.Projects.SelectMany(p => p.MetadataReferences).ToList();
-                    // compilation = compilation.AddReferences(solutionReferences);
+                    // Create initial compilation
+                    var compilation = CSharpCompilation.Create(assemblyName, options: compilationOptions);
 
-                    var injectedReferences = GetAssemblyArray()
-                        .Select(assembly => MetadataReference.CreateFromFile(assembly.Location));
+                    // Add basic framework references
+                    var references = new List<MetadataReference>();
+                    var frameworkPath = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                        @"Reference Assemblies\Microsoft\Framework\.NETFramework\v4.5");
 
-                    compilation = compilation.AddReferences(injectedReferences);
-                    var syntaxTrees = solution.GetSyntaxTreesAsync().Result;
-                    compilation = compilation.AddSyntaxTrees(syntaxTrees);
-
-                    var versions = syntaxTrees.Select(tree => ((CSharpParseOptions)tree.Options).LanguageVersion).ToList();
-
-                    compilation = obfuscator.Obfuscate(compilation);
-
-                    if (outputDirectory != null)
+                    // Add references from project file
+                    Console.WriteLine("\nAdding references:");
+                    foreach (System.Xml.XmlNode node in doc.SelectNodes("//Reference"))
                     {
-                        int unnamedFileCounter = 1;
-                        foreach (var syntaxTree in compilation.SyntaxTrees)
+                        var include = node.Attributes?["Include"]?.Value;
+                        if (!string.IsNullOrEmpty(include))
                         {
-                            string fileName = Path.GetFileName(syntaxTree.FilePath);
-                            if (string.IsNullOrEmpty(fileName))
+                            Console.WriteLine($"Adding reference: {include}");
+                            var refPath = Path.Combine(frameworkPath, include + ".dll");
+                            if (File.Exists(refPath))
                             {
-                                fileName = assemblyName + unnamedFileCounter + ".cs";
-                                unnamedFileCounter += 1;
+                                references.Add(MetadataReference.CreateFromFile(refPath));
                             }
-
-                            if (outputDirectory.Exists == false)
-                            {
-                                try
-                                {
-                                    Directory.CreateDirectory(outputDirectory.FullName);
-                                }
-                                catch (Exception e)
-                                {
-                                    Console.WriteLine("{0} does not exist and could not be created.", outputDirectory);
-                                    return 1;
-                                }
-                            }
-
-                            File.WriteAllText(outputDirectory.FullName + Path.DirectorySeparatorChar + fileName, syntaxTree.ToString());
                         }
                     }
 
+                    // Add our additional references
+                    var injectedReferences = GetAssemblyArray()
+                        .Select(assembly => MetadataReference.CreateFromFile(assembly.Location))
+                        .Where(reference => !references.Contains(reference));
+                    references.AddRange(injectedReferences);
+
+                    compilation = (CSharpCompilation)compilation.AddReferences(references);
+
+                    // Find and add source files
+                    Console.WriteLine("\nAdding source files:");
+                    var projectDir = Path.GetDirectoryName(path);
+                    var sourceFiles = Directory.GetFiles(projectDir, "*.cs", SearchOption.AllDirectories);
+
+                    foreach (var sourceFile in sourceFiles)
+                    {
+                        if (sourceFile.Contains("\\obj\\") || sourceFile.Contains("\\bin\\"))
+                            continue;
+
+                        Console.WriteLine($"Adding source file: {sourceFile}");
+                        var sourceText = File.ReadAllText(sourceFile);
+                        var syntaxTree = CSharpSyntaxTree.ParseText(sourceText, path: sourceFile);
+                        compilation = (CSharpCompilation)compilation.AddSyntaxTrees(syntaxTree);
+                    }
+
+                    // Obfuscate the compilation
+                    compilation = (CSharpCompilation)obfuscator.Obfuscate(compilation);
+
+                    // Output files if requested
+                    if (outputDirectory != null)
+                    {
+                        try
+                        {
+                            if (!outputDirectory.Exists)
+                            {
+                                Directory.CreateDirectory(outputDirectory.FullName);
+                            }
+
+                            int unnamedFileCounter = 1;
+                            foreach (var syntaxTree in compilation.SyntaxTrees)
+                            {
+                                string fileName = Path.GetFileName(syntaxTree.FilePath);
+                                if (string.IsNullOrEmpty(fileName))
+                                {
+                                    fileName = assemblyName + unnamedFileCounter + ".cs";
+                                    unnamedFileCounter += 1;
+                                }
+
+                                File.WriteAllText(Path.Combine(outputDirectory.FullName, fileName), syntaxTree.ToString());
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Failed to write output files: {ex.Message}");
+                            return 1;
+                        }
+                    }
+
+                    // Emit assembly if requested
                     if (outputAssemblyFilePath != null)
                     {
-                        obfuscator.EmitAssembly(compilation, outputAssemblyFilePath.FullName); ;
+                        obfuscator.EmitAssembly(compilation, outputAssemblyFilePath.FullName);
                     }
 
                     return 0;
                 }
+
+                return 0;
             }
-
-            return 1;
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                    Console.WriteLine($"Inner stack trace: {ex.InnerException.StackTrace}");
+                }
+                return 1;
+            }
         }
-
 
         private static VisualStudioInstance SelectVisualStudioInstance(VisualStudioInstance[] visualStudioInstances)
         {
